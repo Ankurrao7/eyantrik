@@ -2,7 +2,7 @@
 
 import { DELIVERY_TIMELINES, PROCESS_LABEL } from '../taxonomy.ts';
 import { effectiveProcesses } from '../rfqFields.ts';
-import { GST_RATES, landed, MAX_COUNTER_ROUNDS, PAYMENT_TERMS, QUOTE_INCLUSIONS, inr } from '../quote.ts';
+import { GST_RATES, landed, PAYMENT_TERMS, QUOTE_INCLUSIONS, inr } from '../quote.ts';
 import { db, nextId, now, sellerRating, type NegotiationEvent, type Quote, type QuoteVersion, type Rfq, type Seller } from './db.ts';
 import { scoreMatch } from './matching.ts';
 import { notifyBuyerOf } from './notify.ts';

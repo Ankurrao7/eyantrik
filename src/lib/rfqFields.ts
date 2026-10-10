@@ -106,8 +106,6 @@ export const RFQ_FIELDS: RfqField[] = [
 	}
 ];
 
-export const RFQ_FIELD = Object.fromEntries(RFQ_FIELDS.map((f) => [f.name, f])) as Record<string, RfqField>;
-
 export type RfqValues = Record<string, string | string[]>;
 export type RfqFiles = Record<string, { name: string; sizeKb: number }[]>;
 

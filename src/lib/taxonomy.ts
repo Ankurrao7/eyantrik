@@ -24,8 +24,6 @@ export const PROCESSES = [
 	{ id: 'PCB_ELECTRONICS', label: 'PCB / Electronics Assembly' }
 ] as const;
 
-export type ProcessId = (typeof PROCESSES)[number]['id'];
-
 export const PROCESS_LABEL: Record<string, string> = Object.fromEntries(
 	PROCESSES.map((p) => [p.id, p.label])
 );
@@ -44,8 +42,6 @@ export const COMMODITY_CATEGORIES = [
 	{ id: 'TOOLING', label: 'Tooling (dies, moulds, fixtures)', processes: ['TOOL_DIE'] },
 	{ id: 'ADDITIVE', label: 'Additive / rapid prototyping (3D printing)', processes: ['3D_PRINTING'] }
 ] as const;
-
-export const COMMODITY_LABEL: Record<string, string> = Object.fromEntries(COMMODITY_CATEGORIES.map((c) => [c.id, c.label]));
 
 export function processesForCommodity(id: string): string[] {
 	return [...(COMMODITY_CATEGORIES.find((c) => c.id === id)?.processes ?? [])];

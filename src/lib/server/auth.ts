@@ -74,14 +74,15 @@ export async function findByLoginId(loginId: string, role: Role): Promise<User |
 
 export type Sessions = Record<Role, User | null>;
 
+// `secure` is left to SvelteKit's default: HTTPS-only cookies everywhere except http://localhost (development).
 function cookieOpts(role: Role) {
 	return role === 'ADMIN'
-		? { path: '/admin', httpOnly: true, sameSite: 'strict' as const, secure: false, maxAge: ADMIN_TTL_S }
-		: { path: '/', httpOnly: true, sameSite: 'lax' as const, secure: false, maxAge: USER_TTL_S }; // secure: true behind HTTPS
+		? { path: '/admin', httpOnly: true, sameSite: 'strict' as const, maxAge: ADMIN_TTL_S }
+		: { path: '/', httpOnly: true, sameSite: 'lax' as const, maxAge: USER_TTL_S };
 }
 
 export function setActive(cookies: Cookies, role: 'BUYER' | 'SELLER') {
-	cookies.set(ACTIVE_COOKIE, role, { path: '/', httpOnly: true, sameSite: 'lax', secure: false, maxAge: USER_TTL_S });
+	cookies.set(ACTIVE_COOKIE, role, { path: '/', httpOnly: true, sameSite: 'lax', maxAge: USER_TTL_S });
 }
 
 /** New session id on every login (prevents session fixation); only this role's previous session is replaced. */

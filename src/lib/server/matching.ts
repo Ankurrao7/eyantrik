@@ -5,7 +5,7 @@
 import { byNearness, coordsFor, distanceKm, nearZone } from '../geo.ts';
 import { effectiveProcesses } from '../rfqFields.ts';
 import type { PublicSeller } from '../types.ts';
-import { db, sellerRating, type Rfq, type Seller, type User } from './db.ts';
+import { sellerRating, type Rfq, type Seller, type User } from './db.ts';
 import { listedSellers } from './sellers.ts';
 import { findUserById } from './users.ts';
 
@@ -76,14 +76,6 @@ export function scoreMatch(seller: Seller, rfq: Rfq): Match {
 export async function matchedSellersFor(rfq: Rfq): Promise<Match[]> {
 	return (await listedSellers())
 		.map((seller) => scoreMatch(seller, rfq))
-		.filter((m) => m.score > 0)
-		.sort((a, b) => byNearness(a, b) || b.score - a.score);
-}
-
-export function leadsForSeller(seller: Seller): (Match & { rfq: Rfq })[] {
-	return db.rfqs
-		.filter((r) => r.status === 'OPEN')
-		.map((rfq) => ({ rfq, ...scoreMatch(seller, rfq) }))
 		.filter((m) => m.score > 0)
 		.sort((a, b) => byNearness(a, b) || b.score - a.score);
 }

@@ -1,4 +1,5 @@
 import { fail } from '@sveltejs/kit';
+import { HELPDESK_HOURS, HELPDESK_PHONE } from '$app/env/private';
 import { PHONE_ERROR, phoneFromForm } from '#lib/server/auth.ts';
 import { db, nextId, now } from '#lib/server/db.ts';
 import type { Actions, PageServerLoad } from './$types';
@@ -19,7 +20,9 @@ export const load: PageServerLoad = ({ locals, url }) => {
 		prefill: user ? { name: user.name, phone: user.phone, companyName: user.companyName } : null,
 		role: user?.role ?? null,
 		rfq: rfq ? { id: rfq.id, title: String(rfq.values.partName ?? rfq.id) } : null,
-		existingTicket: existing ? { id: existing.id, status: existing.status } : null
+		existingTicket: existing ? { id: existing.id, status: existing.status } : null,
+		// from .env — never hardcode a phone number (see .env.example)
+		helpdesk: { phone: HELPDESK_PHONE, hours: HELPDESK_HOURS }
 	};
 };
 
@@ -50,7 +53,8 @@ export const actions: Actions = {
 		}
 		const open = db.tickets.filter((t) => t.phone === phone && t.status !== 'RESOLVED').length;
 		if (open >= MAX_OPEN_TICKETS_PER_PHONE) {
-			return fail(429, { values, errors: { form: `You already have ${open} open requests — our team will call you shortly. For urgent help call +91 120 4567890.` } });
+			const urgent = HELPDESK_PHONE ? ` For urgent help call ${HELPDESK_PHONE}.` : '';
+			return fail(429, { values, errors: { form: `You already have ${open} open requests — our team will call you shortly.${urgent}` } });
 		}
 
 		const needLabel: Record<string, string> = {

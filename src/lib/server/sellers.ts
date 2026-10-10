@@ -15,8 +15,6 @@ const noMongoId = { projection: { _id: 0 } } as const;
 
 export const findSellerById = (id: string) => sellers.findOne<Seller>({ id }, noMongoId);
 export const findSellerBySlug = (slug: string) => sellers.findOne<Seller>({ slug }, noMongoId);
-/** The listing a login account owns (each listing records its owner's userId). */
-export const findSellerOfUser = (userId: string) => sellers.findOne<Seller>({ userId }, noMongoId);
 
 export const listSellers = (filter: Filter<Seller> = {}) => sellers.find<Seller>(filter, noMongoId).toArray();
 /** Sellers buyers can see and that receive leads (documents or ground verified). */

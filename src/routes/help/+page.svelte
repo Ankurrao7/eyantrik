@@ -111,11 +111,13 @@
 		<aside class="card dark">
 			<h3>How eYantrik steps in</h3>
 			<ul class="small how">
-				<li><strong>As your seller:</strong> we take the order, make it in our Noida plant or with verified partners, inspect it (CMM), and deliver. One invoice.</li>
+				<li><strong>As your seller:</strong> we take the order, make it in our own plant or with verified partners, inspect it (CMM), and deliver. One invoice.</li>
 				<li><strong>As your buyer:</strong> for manufacturers — we bring you jobs from our managed orders.</li>
 				<li><strong>As your advisor:</strong> process, material and tooling advice before you commit.</li>
 			</ul>
-			<p class="small mb-0" style="color:#94a3b8">📞 Plant desk: +91 120 4567890<br />Mon–Sat, 9:30 AM – 7 PM</p>
+			{#if data.helpdesk.phone}
+				<p class="small mb-0" style="color:#94a3b8">📞 Help desk: <a href="tel:{data.helpdesk.phone.replace(/\s/g, '')}" style="color:#cbd5e1">{data.helpdesk.phone}</a>{#if data.helpdesk.hours}<br />{data.helpdesk.hours}{/if}</p>
+			{/if}
 		</aside>
 	</div>
 </main>
