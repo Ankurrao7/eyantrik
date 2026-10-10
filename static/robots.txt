@@ -1,0 +1,11 @@
+# allow crawling everything public; keep dashboards out of search
+User-agent: *
+Disallow: /admin
+Disallow: /buyer
+Disallow: /seller$
+Disallow: /seller/
+Disallow: /login
+Disallow: /api
+
+# Replace with the production domain before launch
+Sitemap: http://localhost:5173/sitemap.xml
