@@ -6,19 +6,31 @@
 	import Icon from '#lib/components/Icon.svelte';
 	import Logo from '#lib/components/Logo.svelte';
 	import NotificationToasts from '#lib/components/NotificationToasts.svelte';
+	import { rememberSide, sideOfPath, tabSide } from '#lib/tabSide.svelte.ts';
 
 	let { data, children } = $props();
 	let menuOpen = $state(false);
 	afterNavigate(() => (menuOpen = false));
+	afterNavigate(() => rememberSide(page.url.pathname));
 
-	const role = $derived(data.user?.role ?? null);
+	// Who THIS tab is: the side of the current URL (/buyer…, /seller…), else the side this tab was
+	// last used for (per-tab memory), else the server's guess. So a seller tab stays a seller tab on
+	// the homepage even after you logged in as buyer in another tab.
+	const me = $derived.by(() => {
+		if (data.user?.role === 'ADMIN') return data.user;
+		const side = sideOfPath(page.url.pathname) ?? tabSide.current;
+		return (side && data.sides[side]) || data.user;
+	});
+	const other = $derived(me?.role === 'BUYER' ? data.sides.SELLER : me?.role === 'SELLER' ? data.sides.BUYER : null);
+
+	const role = $derived(me?.role ?? null);
 	// Live unread count from the pop-up poller; falls back to the server value on each navigation.
 	let liveUnread = $state<number | null>(null);
 	afterNavigate(() => (liveUnread = null));
-	const unread = $derived(liveUnread ?? data.unread);
-	const sellerHome = $derived(data.user?.hasSellerProfile ? '/seller' : '/seller/onboarding');
+	const unread = $derived(liveUnread ?? me?.unread ?? 0);
+	const sellerHome = $derived(me?.home ?? '/seller');
 	const initials = $derived(
-		(data.user?.name ?? '')
+		(me?.name ?? '')
 			.split(' ')
 			.filter(Boolean)
 			.slice(0, 2)
@@ -61,22 +73,22 @@
 				</div>
 
 				<div class="actions">
-					{#if data.user}
+					{#if me}
 						{#if role !== 'ADMIN'}
 							<a href={inbox} class="icon-btn" class:active={isActive(inbox)} aria-label="Notifications{unread ? `, ${unread} unread` : ''}">
 								<Icon name="bell" size={20} />
 								{#if unread}<span class="bell-count">{unread > 9 ? '9+' : unread}</span>{/if}
 							</a>
 						{/if}
-						{#if data.other}
-							<a href={data.other.home} class="switch" title="You're also signed in as {data.other.name} ({data.other.role === 'SELLER' ? 'seller' : 'buyer'})">
-								Switch to {data.other.role === 'SELLER' ? 'seller' : 'buyer'}
+						{#if other}
+							<a href={other.home} class="switch" title="You're also signed in as {other.name} ({other.role === 'SELLER' ? 'seller' : 'buyer'})">
+								Switch to {other.role === 'SELLER' ? 'seller' : 'buyer'}
 							</a>
 						{/if}
-						<div class="who" title={data.user.companyName}>
+						<div class="who" title={me.companyName}>
 							<span class="avatar" class:seller={role === 'SELLER'} class:admin={role === 'ADMIN'}>{initials}</span>
 							<span class="who-text">
-								<strong>{data.user.name.split(' ')[0]}</strong>
+								<strong>{me.name.split(' ')[0]}</strong>
 								<span>{role === 'ADMIN' ? 'Admin' : role === 'SELLER' ? 'Manufacturer' : 'Buyer'}</span>
 							</span>
 						</div>
@@ -98,8 +110,8 @@
 		{@render children()}
 	</div>
 
-	{#if data.user && data.user.role !== 'ADMIN'}
-		{#key data.user.id}<NotificationToasts userId={data.user.id} role={data.user.role === 'SELLER' ? 'SELLER' : 'BUYER'} onUnread={(n) => (liveUnread = n)} />{/key}
+	{#if me && me.role !== 'ADMIN'}
+		{#key me.id}<NotificationToasts userId={me.id} role={me.role === 'SELLER' ? 'SELLER' : 'BUYER'} onUnread={(n) => (liveUnread = n)} />{/key}
 	{/if}
 
 	<footer class="foot">

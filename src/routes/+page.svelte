@@ -2,10 +2,14 @@
 <script lang="ts">
 	import Icon, { type IconName } from '#lib/components/Icon.svelte';
 	import SellerCard from '#lib/components/SellerCard.svelte';
+	import { tabSide } from '#lib/tabSide.svelte.ts';
 
 	let { data } = $props();
+	// The call-to-action follows THIS tab's side (a seller tab sees "Open your lead feed").
+	const side = $derived(tabSide.current && data.sides[tabSide.current] ? tabSide.current : data.role);
+	const sideHasProfile = $derived(side === 'SELLER' ? !!data.sides.SELLER?.hasSellerProfile : data.hasSellerProfile);
 
-	const guest = $derived(!data.role);
+	const guest = $derived(!side);
 	const quickProcesses = $derived(data.categories.slice(0, 6));
 	const hasSuppliers = $derived(data.stats.sellers > 0);
 
@@ -68,9 +72,9 @@
 			</div>
 
 			<div class="cta-row rise" style="animation-delay:.25s">
-				{#if data.role === 'SELLER'}
-					<a class="btn ok lg" href={data.hasSellerProfile ? '/seller' : '/seller/onboarding'}>Open your lead feed <Icon name="arrow" size={18} /></a>
-				{:else if data.role === 'ADMIN'}
+				{#if side === 'SELLER'}
+					<a class="btn ok lg" href={sideHasProfile ? '/seller' : '/seller/onboarding'}>Open your lead feed <Icon name="arrow" size={18} /></a>
+				{:else if side === 'ADMIN'}
 					<a class="btn lg" href="/admin">Open admin console <Icon name="arrow" size={18} /></a>
 				{:else}
 					<a class="btn accent lg" href="/rfq/new">Post a requirement — free <Icon name="arrow" size={18} /></a>
@@ -193,8 +197,8 @@
 					<h3>Be one of the first verified factories</h3>
 					<p class="muted small mb-0">The directory is opening now. Early members get listed first and receive every matching requirement in their area — free.</p>
 				</div>
-				{#if data.role !== 'BUYER' && data.role !== 'ADMIN'}
-					<a class="btn ok" href={data.role === 'SELLER' ? (data.hasSellerProfile ? '/seller' : '/seller/onboarding') : '/login/seller?mode=signup'}>List your factory</a>
+				{#if side !== 'BUYER' && side !== 'ADMIN'}
+					<a class="btn ok" href={side === 'SELLER' ? (sideHasProfile ? '/seller' : '/seller/onboarding') : '/login/seller?mode=signup'}>List your factory</a>
 				{/if}
 			</div>
 		{/if}
