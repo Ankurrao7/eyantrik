@@ -4,13 +4,14 @@
 import { normalizePhone, PHONE_ERROR } from './auth.ts';
 import type { Machine, SellerDocument } from './db.ts';
 import { gstinTaken } from './sellers.ts';
+import { saveUpload } from './files.ts';
 import { INDIAN_STATES, INDUSTRIES, MATERIAL_CATEGORIES } from '../taxonomy.ts';
 import { normalizeProcesses } from '../processes.ts';
 
-const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+export const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 
 /** First two digits of a GSTIN = state code. Used to check the GSTIN matches the factory's state. */
-const GST_STATE_CODE: Record<string, string> = {
+export const GST_STATE_CODE: Record<string, string> = {
 	'01': 'Jammu and Kashmir', '02': 'Himachal Pradesh', '03': 'Punjab', '04': 'Chandigarh', '05': 'Uttarakhand',
 	'06': 'Haryana', '07': 'Delhi', '08': 'Rajasthan', '09': 'Uttar Pradesh', '10': 'Bihar', '19': 'West Bengal',
 	'20': 'Jharkhand', '21': 'Odisha', '22': 'Chhattisgarh', '23': 'Madhya Pradesh', '24': 'Gujarat',
@@ -54,17 +55,17 @@ export interface ParsedSeller {
 	};
 }
 
-function checkFile(file: FormDataEntryValue | null, allowed: string[]): { name: string } | 'missing' | string {
+function checkFile(file: FormDataEntryValue | null, allowed: string[]): { file: File } | 'missing' | string {
 	if (!(file instanceof File) || file.size === 0) return 'missing';
 	const ext = '.' + (file.name.split('.').pop() ?? '').toLowerCase();
 	if (!allowed.includes(ext)) return `Only ${allowed.join(', ')} files are allowed.`;
 	if (file.size > MAX_DOC_MB * 1024 * 1024) return `Each file must be under ${MAX_DOC_MB} MB.`;
-	return { name: file.name };
+	return { file };
 }
 
 export async function parseSellerForm(
 	data: FormData,
-	opts: { mode: 'SELF' | 'TEAM'; fixedPhone?: string; excludeSellerId?: string }
+	opts: { mode: 'SELF' | 'TEAM'; fixedPhone?: string; excludeSellerId?: string; ownerUserId?: string }
 ): Promise<ParsedSeller> {
 	const s = (k: string) => (data.get(k)?.toString() ?? '').trim();
 	const names = data.getAll('machineName').map((v) => v.toString().trim());
@@ -140,16 +141,17 @@ export async function parseSellerForm(
 	if (input.machines.length > 40) e.machines = 'List up to 40 machine types.';
 
 	// Documents: required for self-registration; optional when the team adds a seller after a site visit.
-	const documents: SellerDocument[] = [];
+	// Files are only SAVED once the whole form is valid (below), so a rejected form leaves nothing behind.
+	const uploads: { kind: SellerDocument['kind']; file: File }[] = [];
 	const gst = checkFile(data.get('gstCertificate'), DOC_EXT);
 	if (gst === 'missing') {
 		if (opts.mode === 'SELF') e.gstCertificate = 'Upload your GST registration certificate.';
 	} else if (typeof gst === 'string') e.gstCertificate = gst;
-	else documents.push({ kind: 'GST_CERTIFICATE', fileName: gst.name });
+	else uploads.push({ kind: 'GST_CERTIFICATE', file: gst.file });
 
 	const udyam = checkFile(data.get('udyam'), DOC_EXT);
 	if (typeof udyam === 'string' && udyam !== 'missing') e.udyam = udyam;
-	else if (typeof udyam === 'object') documents.push({ kind: 'UDYAM_MSME', fileName: udyam.name });
+	else if (typeof udyam === 'object') uploads.push({ kind: 'UDYAM_MSME', file: udyam.file });
 
 	const photos = data.getAll('factoryPhotos');
 	let photoCount = 0;
@@ -157,7 +159,7 @@ export async function parseSellerForm(
 		const r = checkFile(p, PHOTO_EXT);
 		if (r === 'missing') continue;
 		if (typeof r === 'string') { e.factoryPhotos = r; break; }
-		documents.push({ kind: 'FACTORY_PHOTO', fileName: r.name });
+		uploads.push({ kind: 'FACTORY_PHOTO', file: r.file });
 		photoCount++;
 	}
 	if (photoCount > 10) e.factoryPhotos = 'Upload up to 10 photos.';
@@ -168,7 +170,12 @@ export async function parseSellerForm(
 
 	const certifications = input.certifications.split(',').map((c) => c.trim()).filter(Boolean).slice(0, 10);
 
-	return Object.keys(e).length
-		? { input, errors: e }
-		: { input, errors: e, clean: { phone: phone!, whatsapp: whatsapp!, machines, yearEstablished, certifications, documents } };
+	if (Object.keys(e).length) return { input, errors: e };
+
+	const documents: SellerDocument[] = [];
+	for (const u of uploads) {
+		const saved = await saveUpload(u.file, u.kind, opts.ownerUserId);
+		documents.push({ kind: u.kind, fileName: saved.fileName, fileId: saved.fileId, sizeKb: saved.sizeKb, type: saved.type });
+	}
+	return { input, errors: e, clean: { phone: phone!, whatsapp: whatsapp!, machines, yearEstablished, certifications, documents } };
 }

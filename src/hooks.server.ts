@@ -12,7 +12,7 @@ import { ACTIVE_COOKIE, blockedRolesFor, identityFor, PORTAL_LOGIN, resolveSessi
  */
 export const handle: Handle = async ({ event, resolve }) => {
 	const { pathname, search } = event.url;
-	const signedIn = await resolveSessions(event.cookies);
+	const signedIn = await resolveSessions(event.cookies, pathname);
 	const active = event.cookies.get(ACTIVE_COOKIE);
 	const role = identityFor(event.url, signedIn, active);
 	const user = role ? signedIn[role] : null;

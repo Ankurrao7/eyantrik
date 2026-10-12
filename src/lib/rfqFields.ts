@@ -111,7 +111,7 @@ export const RFQ_FIELDS: RfqField[] = [
 ];
 
 export type RfqValues = Record<string, string | string[]>;
-export type RfqFiles = Record<string, { name: string; sizeKb: number }[]>;
+export type RfqFiles = Record<string, { name: string; sizeKb: number; fileId?: string }[]>;
 
 export interface ParsedRfq {
 	values: RfqValues;

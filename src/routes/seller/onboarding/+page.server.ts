@@ -40,7 +40,7 @@ export const actions: Actions = {
 		} catch {
 			return fail(400, { values: {}, errors: { form: 'Upload failed — files may be too large. Keep each under 5 MB.' } as Record<string, string> });
 		}
-		const parsed = await parseSellerForm(data, { mode: 'SELF', fixedPhone: user.phone, excludeSellerId: existing?.id });
+		const parsed = await parseSellerForm(data, { mode: 'SELF', fixedPhone: user.phone, excludeSellerId: existing?.id, ownerUserId: user.id });
 		if (!parsed.clean) {
 			return fail(400, { values: parsed.input, errors: { ...parsed.errors, form: 'Please fix the highlighted fields.' } });
 		}
@@ -66,11 +66,13 @@ export const actions: Actions = {
 			certifications: clean.certifications,
 			documents: clean.documents,
 			verification: 'DOCS_SUBMITTED' as const,
-			rejectionReason: undefined
+			rejectionReason: undefined,
+			submittedAt: now()
 		};
+		const event = { at: now(), by: 'Seller', action: existing ? ('RESUBMITTED' as const) : ('SUBMITTED' as const) };
 
 		if (existing) {
-			await updateSeller(existing.id, profile); // resubmission after rejection
+			await updateSeller(existing.id, { ...profile, verificationLog: [...(existing.verificationLog ?? []), event] }); // resubmission after changes were requested
 		} else {
 			const id = await nextSellerId();
 			await insertSeller({
@@ -81,6 +83,7 @@ export const actions: Actions = {
 				ratingTotal: 0,
 				reviewCount: 0,
 				createdAt: now(),
+				verificationLog: [event],
 				...profile
 			});
 			user.sellerId = id;

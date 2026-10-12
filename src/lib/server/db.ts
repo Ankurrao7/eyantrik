@@ -29,6 +29,19 @@ export interface Machine {
 export interface SellerDocument {
 	kind: 'GST_CERTIFICATE' | 'UDYAM_MSME' | 'FACTORY_PHOTO' | 'OTHER';
 	fileName: string;
+	/** stored file (see files.ts); missing on documents uploaded before files were kept */
+	fileId?: string;
+	sizeKb?: number;
+	type?: string;
+}
+
+/** One entry in a seller's verification history (shown to the admin team). */
+export interface VerificationEvent {
+	at: string;
+	/** "Seller" or the admin's name */
+	by: string;
+	action: 'SUBMITTED' | 'RESUBMITTED' | 'ADDED_BY_TEAM' | 'DOCS_VERIFIED' | 'CHANGES_REQUESTED' | 'GROUND_VERIFIED' | 'NOTE';
+	note?: string;
 }
 
 export interface Seller {
@@ -59,6 +72,9 @@ export interface Seller {
 	documents: SellerDocument[];
 	groundInspection?: { inspector: string; date: string; notes: string };
 	rejectionReason?: string;
+	/** when documents were (re)submitted — the admin queue is oldest first */
+	submittedAt?: string;
+	verificationLog?: VerificationEvent[];
 	ratingTotal: number;
 	reviewCount: number;
 	isEyantrikPlant?: boolean;
@@ -95,6 +111,10 @@ export interface Rfq {
 	awardedQuoteId?: string;
 	/** how many times the buyer edited & re-posted it */
 	editCount: number;
+	/** sales team called the buyer about this requirement (admin work queue) */
+	salesCalledAt?: string;
+	salesNote?: string;
+	salesBy?: string;
 	editedAt?: string;
 	createdAt: string;
 	updatedAt: string;
@@ -126,6 +146,8 @@ export interface QuoteVersion {
 	processRoute: { process: string; mode: 'IN_HOUSE' | 'OUTSOURCED' }[];
 	notes: string;
 	attachments: string[];
+	/** stored copies of the attachments (see files.ts) */
+	attachmentFiles?: { name: string; fileId: string; sizeKb: number }[];
 	at: string;
 }
 

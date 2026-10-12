@@ -15,6 +15,10 @@ export const variables = defineEnvVars({
 		description: 'Database name',
 		schema: (value) => value || 'eyantrik'
 	},
+	UPLOAD_DIR: {
+		description: 'Folder where uploaded files (documents, drawings, quote PDFs) are stored. Keep it out of git.',
+		schema: (value) => value?.trim() || 'uploads'
+	},
 	HELPDESK_PHONE: {
 		description: 'Help desk phone shown on /help, e.g. +91 98765 43210. Leave empty to hide the phone line.',
 		schema: (value) => value?.trim() || ''

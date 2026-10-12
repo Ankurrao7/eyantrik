@@ -115,11 +115,12 @@ async function sessionUser(sid: string, role: Role): Promise<User | null> {
 	return user && user.role === role ? user : null;
 }
 
-/** Everyone signed in through this browser. The admin cookie only arrives on /admin URLs. */
-export async function resolveSessions(cookies: Cookies): Promise<Sessions> {
+/** Everyone signed in through this browser. The admin cookie only exists on /admin URLs, so it's only read there. */
+export async function resolveSessions(cookies: Cookies, pathname: string): Promise<Sessions> {
 	const out: Sessions = { BUYER: null, SELLER: null, ADMIN: null };
+	const onAdmin = pathname === '/admin' || pathname.startsWith('/admin/');
 	await Promise.all(
-		(Object.keys(SESSION_COOKIE) as Role[]).map(async (role) => {
+		(Object.keys(SESSION_COOKIE) as Role[]).filter((role) => role !== 'ADMIN' || onAdmin).map(async (role) => {
 			const sid = cookies.get(SESSION_COOKIE[role]);
 			if (sid) out[role] = await sessionUser(sid, role);
 		})

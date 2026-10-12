@@ -7,6 +7,7 @@ import { db, now } from '#lib/server/db.ts';
 import { notifyRfqPosted, notifySeller } from '#lib/server/notify.ts';
 import { outdateQuotes } from '#lib/server/quotes.ts';
 import { parseRfqForm, RFQ_FIELDS } from '#lib/rfqFields.ts';
+import { saveFormFiles } from '#lib/server/files.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ params, locals, url }) => {
@@ -43,7 +44,10 @@ export const actions: Actions = {
 
 		const ndaOrDrawingsChanged = newDrawings || values.ndaRequired !== rfq.values.ndaRequired;
 		rfq.values = values;
-		if (newDrawings) rfq.files = { ...rfq.files, drawings: files.drawings };
+		if (newDrawings) {
+			const saved = await saveFormFiles(data, 'drawings', 'DRAWING', rfq.buyerUserId);
+			rfq.files = { ...rfq.files, drawings: saved.map((f) => ({ name: f.fileName, sizeKb: f.sizeKb, fileId: f.fileId })) };
+		}
 		if (ndaOrDrawingsChanged) rfq.ndaAcceptedBy = [];
 		rfq.editCount += 1;
 		rfq.editedAt = now();

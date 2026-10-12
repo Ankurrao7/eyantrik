@@ -2,20 +2,41 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import SellerProfileFields from '#lib/components/SellerProfileFields.svelte';
-	import VerificationBadge from '#lib/components/VerificationBadge.svelte';
-	import { PROCESS_LABEL } from '#lib/taxonomy.ts';
 
 	let { data, form } = $props();
 
 	const tabs = $derived([
+		{ id: 'queue', label: 'Work queue', count: data.queue.length },
 		{ id: 'overview', label: 'Overview' },
 		{ id: 'requirements', label: 'Requirements', count: 0 },
-		{ id: 'verification', label: 'Verification', count: data.kpis.pendingReview + data.kpis.awaitingVisit },
 		{ id: 'add-seller', label: 'Add seller (team)' },
 		{ id: 'helpdesk', label: 'Help desk', count: data.tickets.filter((t) => t.status === 'NEW').length },
 		{ id: 'concierge', label: 'Concierge costing' },
 		{ id: 'activity', label: 'Contact log' }
 	]);
+
+	// ---------- Work queue ----------
+	const TYPES = {
+		DOCS: { label: 'Document review', icon: '📄' },
+		VISIT: { label: 'Factory visit', icon: '🏭' },
+		HELP: { label: 'Help request', icon: '🆘' },
+		CALL: { label: 'Call new buyer', icon: '📞' },
+		NO_QUOTES: { label: 'No quotes yet', icon: '⏳' }
+	} as const;
+	type QType = keyof typeof TYPES;
+	let filter = $state<QType | 'ALL'>('ALL');
+	let search = $state('');
+	let calling = $state<string | null>(null);
+	const countOf = (t: QType) => data.queue.filter((q) => q.type === t).length;
+	const shownQueue = $derived(
+		data.queue.filter(
+			(q) => (filter === 'ALL' || q.type === filter) && (!search.trim() || `${q.title} ${q.sub} ${q.id}`.toLowerCase().includes(search.trim().toLowerCase()))
+		)
+	);
+	const waiting = (iso: string) => {
+		const h = (Date.now() - Date.parse(iso)) / 3_600_000;
+		return { text: h < 1 ? 'just now' : h < 24 ? `${Math.round(h)} h` : `${Math.round(h / 24)} d`, late: h >= 48, soon: h >= 24 && h < 48 };
+	};
 
 	const fmt = (iso: string) => new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 	const today = new Date().toISOString().slice(0, 10);
@@ -35,8 +56,6 @@
 	const quote = $derived(Math.round(baseCost * (1 + margin / 100)));
 	const totalMargin = $derived(job ? (quote - baseCost) * job.quantity : 0);
 
-	let rejecting = $state<string | null>(null);
-	let inspecting = $state<string | null>(null);
 	let ticketRole = $state<Record<string, string>>({});
 	const keep = () => async ({ update }: { update: (o?: { reset?: boolean }) => Promise<void> }) => update({ reset: false });
 </script>
@@ -60,7 +79,51 @@
 	{#if form && 'message' in form && form.message}<div class="alert ok" role="status">{form.message}</div>{/if}
 	{#if form && 'error' in form && form.error}<div class="alert bad" role="alert">{form.error}</div>{/if}
 
-	{#if data.tab === 'overview'}
+	{#if data.tab === 'queue'}
+		<div class="queue-head">
+			<div class="filters" role="tablist" aria-label="Filter tasks">
+				<button type="button" role="tab" aria-selected={filter === 'ALL'} class:on={filter === 'ALL'} onclick={() => (filter = 'ALL')}>All <span>{data.queue.length}</span></button>
+				{#each Object.entries(TYPES) as [id, t] (id)}
+					<button type="button" role="tab" aria-selected={filter === id} class:on={filter === id} onclick={() => (filter = id as QType)}>{t.icon} {t.label} <span>{countOf(id as QType)}</span></button>
+				{/each}
+			</div>
+			<input type="search" class="q-search" placeholder="Search company, buyer, GSTIN, ID…" bind:value={search} aria-label="Search tasks" />
+		</div>
+
+		{#if shownQueue.length === 0}
+			<div class="card center muted">{data.queue.length === 0 ? 'All caught up — nothing waiting. 🎉' : 'Nothing matches this filter.'}</div>
+		{:else}
+			<ul class="queue">
+				{#each shownQueue as q (q.type + q.id)}
+					{@const w = waiting(q.at)}
+					<li class="q-item">
+						<span class="q-icon" aria-hidden="true">{TYPES[q.type].icon}</span>
+						<div class="q-main">
+							<div class="q-top">
+								<span class="q-type">{TYPES[q.type].label}</span>
+								<span class="q-age" class:late={w.late} class:soon={w.soon} title="Waiting since {fmt(q.at)}">waiting {w.text}</span>
+							</div>
+							<strong class="q-title">{q.title}</strong>
+							<span class="small muted">{q.sub}</span>
+							{#if calling === q.id}
+								<form method="POST" action="?/markCalled" use:enhance={keep} class="row gap mt">
+									<input type="hidden" name="rfqId" value={q.id} />
+									<input name="note" placeholder="What did the buyer say? (optional)" maxlength="300" class="call-note" />
+									<button class="btn ok sm">Save</button>
+									<button type="button" class="btn ghost sm" onclick={() => (calling = null)}>Cancel</button>
+								</form>
+							{/if}
+						</div>
+						<div class="q-actions">
+							{#if q.phone}<a class="btn ghost sm" href="tel:+91{q.phone}">📞 Call</a>{/if}
+							{#if q.type === 'CALL' && calling !== q.id}<button type="button" class="btn ghost sm" onclick={() => (calling = q.id)}>Mark as called</button>{/if}
+							<a class="btn sm" href={q.href}>{q.cta} →</a>
+						</div>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	{:else if data.tab === 'overview'}
 		<h3>Users</h3>
 		<div class="grid four">
 			<div class="stat"><div class="v">{data.kpis.buyers}</div><div class="k">Buyers</div></div>
@@ -95,8 +158,14 @@
 				<thead><tr><th>Requirement</th><th>Buyer</th><th>Delivery</th><th class="num">Interested</th><th class="num">Quotes</th><th class="num">Lowest / pc</th><th>Status</th></tr></thead>
 				<tbody>
 					{#each data.requirements as r (r.id)}
-						<tr>
-							<td><strong>{r.title}</strong><div class="tiny muted">{r.id} · {r.quantity} pcs · {fmt(r.createdAt)}{#if r.editCount} · edited ×{r.editCount}{/if}</div></td>
+						<tr id={r.id} class="target">
+							<td>
+								<strong>{r.title}</strong><div class="tiny muted">{r.id} · {r.quantity} pcs · {fmt(r.createdAt)}{#if r.editCount} · edited ×{r.editCount}{/if}</div>
+								{#if r.salesCalledAt}<div class="tiny" style="color:var(--ok-ink)">✓ Called {fmt(r.salesCalledAt)}{#if r.salesNote} — “{r.salesNote}”{/if}</div>{/if}
+								{#if r.files.length}
+									<ul class="file-links">{#each r.files as f}<li>{#if f.url}<a href={f.url} target="_blank" rel="noopener">📎 {f.label}</a>{:else}<span class="muted">📎 {f.label} (not kept)</span>{/if}</li>{/each}</ul>
+								{/if}
+							</td>
 							<td>{#if r.buyer}<strong>{r.buyer.name}</strong><div class="tiny muted">{r.buyer.company}</div><a class="small" href="tel:+91{r.buyer.phone}">📞 +91 {r.buyer.phone}</a>{:else}—{/if}</td>
 							<td class="small">{r.city}</td>
 							<td class="num">{r.interested}</td>
@@ -107,65 +176,6 @@
 					{/each}
 				</tbody>
 			</table>
-		</div>
-
-	{:else if data.tab === 'verification'}
-		{#if data.verificationQueue.length === 0}
-			<div class="card center muted">Queue is empty 🎉</div>
-		{/if}
-		<div class="stack">
-			{#each data.verificationQueue as s (s.id)}
-				<article class="card">
-					<div class="row between top gap">
-						<div>
-							<h3 class="mb-0">{s.companyName}</h3>
-							<div class="small muted">{s.address}, {s.city}, {s.state} {s.pincode} · GSTIN <code>{s.gstin}</code> · {s.onboardedBy === 'SELF' ? 'Self-registered' : 'Team'} · {fmt(s.createdAt)}</div>
-						</div>
-						<VerificationBadge status={s.verification} />
-					</div>
-					<div class="grid two mt small">
-						<div>
-							<strong>Contact:</strong> {s.contactPerson} · +91 {s.phone}{#if s.email} · {s.email}{/if}<br />
-							<strong>Processes:</strong> {s.processes.map((p) => PROCESS_LABEL[p] ?? p).join(', ')}<br />
-							<strong>Machines:</strong> {s.machines.map((m) => `${m.count}× ${m.name}`).join(', ')}
-						</div>
-						<div>
-							<strong>Documents:</strong>
-							{#if s.documents.length === 0}<span class="muted">none</span>{/if}
-							<ul class="docs">{#each s.documents as d}<li>📄 {d.kind.replace(/_/g, ' ').toLowerCase()}: {d.fileName}</li>{/each}</ul>
-						</div>
-					</div>
-
-					<div class="row gap mt">
-						{#if s.verification === 'DOCS_SUBMITTED'}
-							<form method="POST" action="?/approveDocs" use:enhance><input type="hidden" name="sellerId" value={s.id} /><button class="btn ok sm">✓ Approve documents</button></form>
-						{:else}
-							<button class="btn sm" onclick={() => (inspecting = inspecting === s.id ? null : s.id)}>Record ground inspection</button>
-						{/if}
-						<button class="btn danger sm" onclick={() => (rejecting = rejecting === s.id ? null : s.id)}>Reject</button>
-					</div>
-
-					{#if rejecting === s.id}
-						<form method="POST" action="?/rejectSeller" use:enhance={keep} class="mt">
-							<input type="hidden" name="sellerId" value={s.id} />
-							<div class="field"><label for="reason-{s.id}">Reason (shown to the seller)</label><input id="reason-{s.id}" name="reason" required minlength="5" placeholder="e.g. GST certificate unreadable; photos don't show listed machines" /></div>
-							<button class="btn danger sm">Confirm rejection</button>
-						</form>
-					{/if}
-					{#if inspecting === s.id}
-						<form method="POST" action="?/groundVerify" use:enhance={keep} class="mt inspect">
-							<input type="hidden" name="sellerId" value={s.id} />
-							<div class="form-grid">
-								<div class="field"><label for="insp-{s.id}">Inspector</label><input id="insp-{s.id}" name="inspector" required /></div>
-								<div class="field"><label for="date-{s.id}">Visit date</label><input id="date-{s.id}" type="date" name="date" max={today} required /></div>
-								<div class="field full"><label for="notes-{s.id}">Notes</label><textarea id="notes-{s.id}" name="notes" placeholder="What was checked, anything that differed from the listing"></textarea></div>
-							</div>
-							<label class="row gap small mb"><input type="checkbox" name="machinesMatch" /> Machines, address and documents match what was found on site</label>
-							<button class="btn ok sm">Mark ground verified</button>
-						</form>
-					{/if}
-				</article>
-			{/each}
 		</div>
 
 	{:else if data.tab === 'add-seller'}
@@ -195,7 +205,7 @@
 		{#if data.tickets.length === 0}<div class="card center muted">No tickets yet.</div>{/if}
 		<div class="stack">
 			{#each data.tickets as t (t.id)}
-				<article class="card" class:new-ticket={t.status === 'NEW'}>
+				<article class="card target" id={t.id} class:new-ticket={t.status === 'NEW'}>
 					<div class="row between top gap">
 						<div>
 							<strong>{t.id}</strong> · <span class="badge neutral">{t.raisedBy.toLowerCase()}</span>
@@ -366,13 +376,35 @@
 </main>
 
 <style>
+	.file-links { list-style: none; padding: 0; margin: 4px 0 0; font-size: 0.78rem; display: grid; gap: 2px; }
+	/* the work queue links to #id — highlight the row it opens */
+	:global(.target:target) { outline: 3px solid var(--brand); outline-offset: 2px; scroll-margin-top: 90px; }
+	.queue-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+	.filters { display: flex; flex-wrap: wrap; gap: 6px; }
+	.filters button { border: 1px solid var(--line-2); background: #fff; border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 0.84rem; font-weight: 600; cursor: pointer; color: var(--ink-2); }
+	.filters button span { margin-left: 4px; color: var(--muted); font-weight: 700; }
+	.filters button.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+	.filters button.on span { color: #c7d2fe; }
+	.q-search { max-width: 280px; }
+	.queue { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+	.q-item { display: flex; gap: 14px; align-items: flex-start; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; box-shadow: var(--shadow); }
+	.q-icon { font-size: 1.4rem; line-height: 1; margin-top: 2px; }
+	.q-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+	.q-top { display: flex; gap: 10px; align-items: center; }
+	.q-type { font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--brand); }
+	.q-age { font-size: 0.72rem; font-weight: 700; color: var(--muted); background: #f0f2f7; border-radius: 999px; padding: 1px 8px; }
+	.q-age.soon { background: var(--warn-soft); color: var(--warn-ink); }
+	.q-age.late { background: var(--bad-soft); color: #a8262b; }
+	.q-title { font-size: 0.98rem; }
+	.q-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
+	.call-note { flex: 1; min-width: 180px; }
+	@media (max-width: 700px) { .q-item { flex-wrap: wrap; } .q-actions { width: 100%; justify-content: flex-start; } .q-search { max-width: none; width: 100%; } }
 	.stat.link { text-decoration: none; color: inherit; }
 	.track { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
 	.track li { border-left: 3px solid var(--line-2); padding: 2px 0 2px 10px; color: var(--muted); }
 	.track li.done { border-left-color: var(--ok); color: var(--ink); }
 	.stat.link:hover { border-color: var(--brand); }
-	.docs { margin: 4px 0 0; padding-left: 0; list-style: none; }
-	.inspect, .ticket-form { background: #f8fafc; border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+	.ticket-form { background: #f8fafc; border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
 	.ticket-form { display: grid; grid-template-columns: 180px 220px 1fr auto; gap: 10px; align-items: end; }
 	.ticket-form .field { margin: 0; }
 	@media (max-width: 900px) { .ticket-form { grid-template-columns: 1fr; } }

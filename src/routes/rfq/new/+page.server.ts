@@ -2,6 +2,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import { randomHex } from '#lib/server/auth.ts';
 import { db, nextId, now } from '#lib/server/db.ts';
 import { notifyRfqPosted } from '#lib/server/notify.ts';
+import { saveFormFiles } from '#lib/server/files.ts';
 import { parseRfqForm, type RfqValues } from '#lib/rfqFields.ts';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -47,6 +48,10 @@ export const actions: Actions = {
 		if (user.role !== 'BUYER') {
 			return fail(403, { values, errors: {}, formError: 'Requirements are posted from a buyer account. Log in or create one — your seller account stays signed in.' });
 		}
+
+		// keep the drawings (only now — the form is valid and the buyer is signed in)
+		const saved = await saveFormFiles(data, 'drawings', 'DRAWING', user.id);
+		if (saved.length) files.drawings = saved.map((f) => ({ name: f.fileName, sizeKb: f.sizeKb, fileId: f.fileId }));
 
 		const rfq = {
 			id: nextId('RFQ'),

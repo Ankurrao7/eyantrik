@@ -3,6 +3,7 @@
 import { DELIVERY_TIMELINES, PROCESS_LABEL } from '../taxonomy.ts';
 import { effectiveProcesses, pickedProcesses, processesForSeller } from '../rfqFields.ts';
 import { normalizeProcesses, normalizeShop, shopLabel } from '../processes.ts';
+import { saveUpload } from './files.ts';
 import { GST_RATES, landed, PAYMENT_TERMS, QUOTE_INCLUSIONS, inr } from '../quote.ts';
 import { db, nextId, now, sellerRating, type NegotiationEvent, type Quote, type QuoteVersion, type Rfq, type Seller } from './db.ts';
 import { scoreMatch } from './matching.ts';
@@ -114,11 +115,12 @@ const ATTACH_EXT = ['.pdf', '.xlsx', '.xls', '.csv', '.doc', '.docx', '.jpg', '.
 const ATTACH_MAX_MB = 10;
 const ATTACH_MAX_FILES = 5;
 
-export function parseQuoteForm(
+export async function parseQuoteForm(
 	data: FormData,
 	rfq: Rfq,
-	prev?: QuoteVersion
-): { values: QuoteFormValues; errors: Record<string, string>; version?: Omit<QuoteVersion, 'v' | 'at'>; saveDefaults: boolean } {
+	prev?: QuoteVersion,
+	ownerUserId?: string
+): Promise<{ values: QuoteFormValues; errors: Record<string, string>; version?: Omit<QuoteVersion, 'v' | 'at'>; saveDefaults: boolean }> {
 	const s = (k: string) => (data.get(k)?.toString() ?? '').trim();
 	// only the process rows the form actually showed (see quoteFormDefaults)
 	const processes = effectiveProcesses(rfq.values).filter((p) => data.has(`route_${p}`));
@@ -181,8 +183,10 @@ export function parseQuoteForm(
 	// Seller's own quote PDF / Excel (e.g. from their costing software). New upload replaces; otherwise keep previous.
 	const files = data.getAll('attachments').filter((x): x is File => x instanceof File && x.size > 0);
 	let attachments = prev?.attachments ?? [];
+	let keepFiles = prev?.attachmentFiles ?? [];
 	if (files.length) {
 		attachments = [];
+		keepFiles = [];
 		if (files.length > ATTACH_MAX_FILES) e.attachments = `Attach up to ${ATTACH_MAX_FILES} files.`;
 		for (const file of files) {
 			const ext = '.' + (file.name.split('.').pop() ?? '').toLowerCase();
@@ -194,6 +198,8 @@ export function parseQuoteForm(
 	const saveDefaults = data.get('saveDefaults') === 'on';
 
 	if (Object.keys(e).length) return { values, errors: e, saveDefaults };
+	// valid → keep the uploaded quotation files
+	const attachmentFiles = files.length ? (await Promise.all(files.map((f) => saveUpload(f, 'QUOTE', ownerUserId)))).map((f) => ({ name: f.fileName, fileId: f.fileId, sizeKb: f.sizeKb })) : keepFiles;
 	return {
 		values,
 		errors: e,
@@ -202,7 +208,7 @@ export function parseQuoteForm(
 			setupCost, sampleCost, gstPercent, freight: values.freight as 'EX_WORKS' | 'DELIVERED', freightCost, includes: values.includes,
 			sampleDays, bulkDays, monthlyCapacity: monthlyCapacity || undefined, paymentTerms: values.paymentTerms, validTill: values.validTill,
 			processRoute: processes.map((p) => ({ process: p, mode: values.route[p] as 'IN_HOUSE' | 'OUTSOURCED' })),
-			notes: values.notes, attachments
+			notes: values.notes, attachments, attachmentFiles
 		},
 		saveDefaults
 	};

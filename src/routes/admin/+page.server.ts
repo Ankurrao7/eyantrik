@@ -13,15 +13,27 @@ import { landed } from '#lib/quote.ts';
 import { ORDER_STAGES, ORDER_STAGE_LABEL } from '#lib/orders.ts';
 import type { Actions, PageServerLoad } from './$types';
 
-const TABS = ['overview', 'requirements', 'verification', 'add-seller', 'helpdesk', 'concierge', 'activity'] as const;
+const TABS = ['queue', 'overview', 'requirements', 'add-seller', 'helpdesk', 'concierge', 'activity'] as const;
 type Tab = (typeof TABS)[number];
 
 const DAY = 86_400_000;
 
+export interface QueueItem {
+	type: 'DOCS' | 'VISIT' | 'HELP' | 'CALL' | 'NO_QUOTES';
+	id: string;
+	title: string;
+	sub: string;
+	/** waiting since */
+	at: string;
+	href: string;
+	cta: string;
+	phone?: string;
+}
+
 export const load: PageServerLoad = async ({ locals, url }) => {
 	requireUser(locals, url, ['ADMIN']);
 	const tabParam = url.searchParams.get('tab') as Tab | null;
-	const tab: Tab = tabParam && TABS.includes(tabParam) ? tabParam : 'overview';
+	const tab: Tab = tabParam && TABS.includes(tabParam) ? tabParam : 'queue';
 
 	// Users live in MongoDB: fetch everyone this page mentions in one query, then look up by id.
 	const people = await usersById([...db.contacts.flatMap((c) => [c.fromUserId, c.toBuyerUserId]), ...db.rfqs.map((r) => r.buyerUserId)]);
@@ -57,10 +69,28 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		avgRating: rated.length ? Math.round((rated.reduce((n, s) => n + (sellerRating(s) ?? 0), 0) / rated.length) * 10) / 10 : null
 	};
 
-	const verificationQueue = allSellers
-		.filter((s) => s.verification === 'DOCS_SUBMITTED' || s.verification === 'DOCS_VERIFIED')
-		.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-		.map((s) => ({ ...s }));
+	// ---------- Work queue: every pending task from every area, oldest first ----------
+	const H = 3_600_000;
+	const queue: QueueItem[] = [];
+	for (const sl of allSellers) {
+		const at = sl.submittedAt ?? sl.createdAt;
+		if (sl.verification === 'DOCS_SUBMITTED')
+			queue.push({ type: 'DOCS', id: sl.id, title: sl.companyName, sub: `${sl.city}, ${sl.state} · GSTIN ${sl.gstin} · ${sl.documents.length} document${sl.documents.length === 1 ? '' : 's'}`, at, href: `/admin/review/seller/${sl.id}`, cta: 'Review documents' });
+		else if (sl.verification === 'DOCS_VERIFIED')
+			queue.push({ type: 'VISIT', id: sl.id, title: sl.companyName, sub: `${sl.address}, ${sl.city} · +91 ${sl.phone}`, at, href: `/admin/review/seller/${sl.id}`, cta: 'Record factory visit' });
+	}
+	for (const t of db.tickets.filter((t) => t.status === 'NEW' || t.status === 'CONTACTED'))
+		queue.push({ type: 'HELP', id: t.id, title: `${t.name}${t.companyName ? ` · ${t.companyName}` : ''}`, sub: `${t.status === 'NEW' ? 'New' : 'Contacted'} · ${t.message.slice(0, 90)}${t.message.length > 90 ? '…' : ''}`, at: t.createdAt, href: `/admin?tab=helpdesk#${t.id}`, cta: 'Open request', phone: t.phone });
+	for (const r of db.rfqs.filter((r) => r.status === 'OPEN')) {
+		const buyer = people.get(r.buyerUserId);
+		const title = String(r.values.partName ?? r.id);
+		const liveQuotes = db.quotes.filter((q) => q.rfqId === r.id && isLive(q) && q.versions.length).length;
+		if (!r.salesCalledAt)
+			queue.push({ type: 'CALL', id: r.id, title: `${title} · ${r.values.quantity} pcs`, sub: `${buyer ? `${buyer.name}, ${buyer.companyName}` : 'Buyer'} · ${r.values.deliveryCity}`, at: r.createdAt, href: `/admin?tab=requirements#${r.id}`, cta: 'Call buyer', phone: buyer?.phone });
+		else if (liveQuotes === 0 && Date.now() - Date.parse(r.createdAt) > 48 * H)
+			queue.push({ type: 'NO_QUOTES', id: r.id, title: `${title} · ${r.values.quantity} pcs`, sub: `No quotes after ${Math.round((Date.now() - Date.parse(r.createdAt)) / (24 * H))} days — offer eYantrik's help`, at: r.createdAt, href: `/admin?tab=requirements#${r.id}`, cta: 'Offer help', phone: buyer?.phone });
+	}
+	queue.sort((x, y) => x.at.localeCompare(y.at));
 
 	const tickets = db.tickets.map((t) => ({
 		...t,
@@ -97,7 +127,14 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			quotes: live.length,
 			lowest: live.length ? Math.min(...live.map((q) => landed(latest(q)).perPiece)) : null,
 			editCount: r.editCount,
-			createdAt: r.createdAt
+			createdAt: r.createdAt,
+			salesCalledAt: r.salesCalledAt ?? null,
+			salesNote: r.salesNote ?? '',
+			// files the admin can open: buyer's drawings + every seller's quotation attachments
+			files: [
+				...(r.files.drawings ?? []).map((f) => ({ label: `Drawing: ${f.name}`, url: f.fileId ? `/admin/files/${f.fileId}` : null })),
+				...live.flatMap((q) => (latest(q).attachmentFiles ?? []).map((f) => ({ label: `Quote · ${sellerName(q.sellerId)}: ${f.name}`, url: `/admin/files/${f.fileId}` })))
+			]
 		};
 	});
 
@@ -105,7 +142,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	return {
 		tab,
 		kpis,
-		verificationQueue,
+		queue,
 		tickets,
 		jobs: db.jobs,
 		selectedJobId: db.jobs.some((j) => j.id === jobId) ? jobId : (db.jobs[0]?.id ?? null),
@@ -124,47 +161,20 @@ function findJob(id: string | undefined) {
 }
 
 export const actions: Actions = {
-	approveDocs: async ({ request, locals, url }) => {
-		requireUser(locals, url, ['ADMIN']);
-		const seller = await findSeller((await request.formData()).get('sellerId')?.toString());
-		if (!seller) return fail(404, { error: 'Seller not found.' });
-		if (seller.verification !== 'DOCS_SUBMITTED') return fail(409, { error: `${seller.companyName} is not awaiting document review.` });
-		await updateSeller(seller.id, { verification: 'DOCS_VERIFIED' });
-		await notifySeller(seller.id, { type: 'VERIFICATION', title: 'Documents verified ✓', body: 'You are now listed and can send quotations. Matching leads are waiting in your feed.', link: '/seller' });
-		return { message: `${seller.companyName}: documents verified — now listed and receiving leads.` };
-	},
-
-	rejectSeller: async ({ request, locals, url }) => {
-		requireUser(locals, url, ['ADMIN']);
+	// Sales team called the buyer about a new requirement (from the work queue).
+	markCalled: async ({ request, locals, url }) => {
+		const admin = requireUser(locals, url, ['ADMIN']);
 		const data = await request.formData();
-		const seller = await findSeller(data.get('sellerId')?.toString());
-		const reason = (data.get('reason')?.toString() ?? '').trim();
-		if (!seller) return fail(404, { error: 'Seller not found.' });
-		if (reason.length < 5) return fail(400, { error: 'Give the seller a clear rejection reason (min 5 characters).', sellerId: seller.id });
-		await updateSeller(seller.id, { verification: 'REJECTED', rejectionReason: reason });
-		await notifySeller(seller.id, { type: 'VERIFICATION', title: 'Verification needs changes', body: `Reason: ${reason}. Correct and resubmit from your dashboard.`, link: '/seller/onboarding' });
-		return { message: `${seller.companyName} rejected. They can correct and resubmit.` };
-	},
-
-	groundVerify: async ({ request, locals, url }) => {
-		requireUser(locals, url, ['ADMIN']);
-		const data = await request.formData();
-		const seller = await findSeller(data.get('sellerId')?.toString());
-		const inspector = (data.get('inspector')?.toString() ?? '').trim();
-		const date = data.get('date')?.toString() ?? '';
-		const notes = (data.get('notes')?.toString() ?? '').trim();
-		if (!seller) return fail(404, { error: 'Seller not found.' });
-		if (seller.verification !== 'DOCS_VERIFIED') return fail(409, { error: 'Approve documents before ground verification.', sellerId: seller.id });
-		if (inspector.length < 2 || !date || data.get('machinesMatch') !== 'on')
-			return fail(400, { error: 'Inspector, visit date and the "machines match" confirmation are required.', sellerId: seller.id });
-		if (Date.parse(date) > Date.now()) return fail(400, { error: 'Visit date cannot be in the future.', sellerId: seller.id });
-		await updateSeller(seller.id, { verification: 'GROUND_VERIFIED', groundInspection: { inspector, date, notes } });
-		await notifySeller(seller.id, { type: 'VERIFICATION', title: 'Ground verified ✓✓', body: 'Your factory inspection is complete. You now rank higher for buyers.', link: '/seller' });
-		return { message: `${seller.companyName} is now ground verified.` };
+		const rfq = db.rfqs.find((r) => r.id === data.get('rfqId')?.toString());
+		if (!rfq) return fail(404, { error: 'Requirement not found.' });
+		rfq.salesCalledAt = now();
+		rfq.salesBy = admin.name;
+		rfq.salesNote = (data.get('note')?.toString() ?? '').trim().slice(0, 300) || undefined;
+		return { message: `Marked as called: ${rfq.values.partName}.` };
 	},
 
 	addSeller: async ({ request, locals, url }) => {
-		requireUser(locals, url, ['ADMIN']);
+		const admin = requireUser(locals, url, ['ADMIN']);
 		let data: FormData;
 		try {
 			data = await request.formData();
@@ -231,6 +241,8 @@ export const actions: Actions = {
 			onboardedBy: 'TEAM',
 			documents: clean.documents,
 			groundInspection: { inspector, date, notes },
+			submittedAt: now(),
+			verificationLog: [{ at: now(), by: admin.name, action: 'ADDED_BY_TEAM', note: `Factory visited ${date} by ${inspector}` }],
 			ratingTotal: 0,
 			reviewCount: 0,
 			createdAt: now()

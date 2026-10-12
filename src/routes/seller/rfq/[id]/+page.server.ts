@@ -97,7 +97,7 @@ export const actions: Actions = {
 		} catch {
 			return fail(400, { error: 'Upload failed — keep attachments under 10 MB each.' });
 		}
-		const parsed = parseQuoteForm(formData, rfq, quote ? latest(quote) : undefined);
+		const parsed = await parseQuoteForm(formData, rfq, quote ? latest(quote) : undefined, user.id);
 		if (!parsed.version) return fail(400, { values: parsed.values, errors: parsed.errors, error: 'Please fix the highlighted fields.' });
 		if (parsed.saveDefaults) {
 			await updateSeller(seller.id, {
