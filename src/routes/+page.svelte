@@ -204,13 +204,14 @@
 	<section class="section">
 		<div class="section-head">
 			<span class="eyebrow">Capabilities</span>
-			<h2>Browse by process</h2>
+			<h2>Browse by type of work</h2>
+			<p class="muted">Not sure what the process is called? Pick by the kind of parts you need.</p>
 		</div>
 		<div class="cats">
 			{#each data.categories as c (c.id)}
 				<a href="/sellers?process={c.id}" class="cat">
-					<span class="cat-mark">{c.label.slice(0, 1)}</span>
-					<span class="cat-label">{c.label}</span>
+					<span class="cat-mark" aria-hidden="true">{c.emoji}</span>
+					<span class="cat-label">{c.label}<small>{c.examples}</small></span>
 					<span class="cat-count">{c.count > 0 ? c.count : ''}</span>
 					<Icon name="arrow" size={16} class="cat-arrow" />
 				</a>
@@ -373,8 +374,9 @@
 	.cats { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
 	.cat { display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; text-decoration: none; color: var(--ink); transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
 	.cat:hover { color: var(--ink); border-color: #c7d0ff; box-shadow: var(--shadow-md); transform: translateY(-1px); }
-	.cat-mark { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; font-weight: 800; font-size: 0.85rem; color: var(--brand); background: var(--brand-soft); flex: none; }
-	.cat-label { flex: 1; font-weight: 600; font-size: 0.9rem; }
+	.cat-mark { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; font-size: 1.15rem; background: var(--brand-soft); flex: none; }
+	.cat-label { flex: 1; font-weight: 600; font-size: 0.9rem; display: flex; flex-direction: column; gap: 2px; }
+	.cat-label small { font-weight: 400; font-size: 0.76rem; color: var(--muted); line-height: 1.35; }
 	.cat-count { font-size: 0.75rem; font-weight: 700; color: var(--muted); }
 	.cat :global(.cat-arrow) { color: #b4bccb; transition: transform .15s ease, color .15s ease; }
 	.cat:hover :global(.cat-arrow) { color: var(--brand); transform: translateX(2px); }

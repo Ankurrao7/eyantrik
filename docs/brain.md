@@ -98,12 +98,20 @@ Defined once in `src/lib/rfqFields.ts` (form UI, server validation and display a
 
 | Section | Fields |
 |---|---|
-| Part | Part name* (≥3), Description, Industry*, Budget range*, Commodity category*, Material category*, Material* (grade suggestions by family), Manufacturing process (multi, filtered by commodity, "show all" for multi-process parts), Prototype or batch*, Quantity* |
+| Part | Part name* (≥3), Description, Industry*, Budget range*, **What kind of work is it?*** (13 shop cards with example parts; stored as `commodityCategory`), Material type*, Material* (grade suggestions by family), **Which process? (optional)** (process picker filtered by the chosen shop, search, "part needs other types of work too"), Prototype or batch*, Quantity* |
 | Specifications | Bounding L×W×H (mm), Tolerance (mm), Tolerance notes, Surface finish, Quality requirements |
 | Delivery | Delivery timeline*, Pincode*, City*, State* |
 | Drawings | Require NDA (checkbox), Drawings (multi-file, 20 MB each, max 10) — optional in Phase 1 |
 
 **Deliberate differences from the reference form:** commodity category = *primary* category (multi-process parts allowed); extra low budget bands (<₹50k, ₹50k–2L, ₹2–10L, Not sure); pincode instead of free-text location (needed for distance); drawings optional (traffic goal); "Prototype or batch?" added.
+
+**Process list (decision 2026-10-12, Option B — built):** `src/lib/processes.ts` = **13 shops → 33 groups → 143 processes**, curated for Indian job shops from the Manufacturing Network research (`docs/research/manufacturing-network-processes.md`). Must be easy for engineers AND non-engineers:
+- Shops use buyer language: Machine shop · Cutting & profiling · Sheet metal & press shop · Forging & forming · Foundry · Plastics, rubber & fibreglass · **Tool room** (India strength) · Welding & fabrication · Heat treatment · Surface finishing & coating · Inspection & testing · Assembly & electronics · 3D printing & prototypes.
+- Every shop has an emoji + example parts; every process has an everyday name, a one-line plain `hint`, and `aka` shop-floor words for search (VMC, wire cut, CO2 welding, bakelite, lost wax…). `searchProcesses()` ranks exact names first.
+- **Excluded on purpose:** size/material/machine variants (Large turning, ferrous vs non-ferrous, CNC vs manual → future seller capability fields), "coded welding" duplicates (→ certification badge), lab/rare tech (LIGA, laser peening, HIP…), printing-industry processes, rare plating (cadmium/rhodium → "other plating").
+- Buyers: choose a shop (required); exact process optional. Process list stays hidden until a shop is chosen. Sellers: collapsible shops with a count, search, removable chips (`ProcessPicker.svelte`, `WorkTypePicker.svelte`).
+- Old 23 ids → new via `LEGACY_PROCESS_MAP` / `LEGACY_SHOP_MAP`; `normalizeProcesses()` converts at read time; `npm run db:migrate` converted stored sellers (S-1001: CNC_MACHINING, PRESS_STAMPING, SAND_CASTING → VMC, HMC, Blanking, Progressive stamping, Sand casting).
+- **Next (not built):** seller capability fields — max part size/weight, sheet thickness, press/machine tonnage, tolerance, batch sweet spot, certifications (ISO 9001, IATF 16949, AS9100, NABL, IBR/ASME IX welders), in-house vs outsourced; combination search ("does ALL of these"); one description page per process.
 
 **Shared taxonomy** (`src/lib/taxonomy.ts`): processes, commodity categories (→ processes), material families (→ grade examples), industries, budget bands (ranked), delivery timelines. **Sellers are tagged with the same ids** (processes, material families, industries) so filtering compares like with like.
 
@@ -123,7 +131,7 @@ Defined once in `src/lib/rfqFields.ts` (form UI, server validation and display a
 
 The nearer of pincode hierarchy and km band wins (`nearZone` in `src/lib/geo.ts`) — needed because NCR neighbours sit in different postal zones (Noida 201xxx vs Gurugram 122xxx, ~40 km).
 
-- **Match rule** (`scoreMatch`, `src/lib/server/matching.ts`): seller must cover ≥1 required process (picked processes, or the whole commodity category if none picked). Relevance score (process coverage, nearness, material family, industry, ground verified, rating) only breaks ties within the same zone.
+- **Match rule** (`scoreMatch`, `src/lib/server/matching.ts`): seller must cover ≥1 required process (picked processes, or the whole shop if none picked). Shop-only requirements score "works in this shop" once (a seller who ticked 20 boxes doesn't out-rank a specialist); picked processes score per process covered. Screens show the picked processes, or "Any · <shop>" + what this seller does in it (`processesForSeller`). Relevance score (process coverage, nearness, material family, industry, ground verified, rating) only breaks ties within the same zone.
 - **Quotes on the buyer's RFQ are ordered by landed price ascending** (default), with sort options Nearest / Fastest / Best rated.
 - Distance = straight-line km from pincodes (demo lookup; production → India Post pincode dataset).
 
@@ -242,6 +250,7 @@ Bell with unread count in the header + `/notifications` (click marks read & open
 ---
 
 ## 9. Changelog
+- **2026-10-12** — New process list (Option B): 13 shops → 33 groups → 143 processes in `processes.ts`, plain explanations + shop-floor search words; "What kind of work?" cards and a process picker on the requirement form; collapsible picker for sellers; directory filter by shop or process (+ keyword finds VMC, wire cut…); homepage "Browse by type of work"; sitemap per shop/process; fair scoring for shop-only requirements; old ids converted (`db:migrate`). Research saved in `docs/research/`. Tested 22/22.
 - **2026-10-10** — Code audit: removed unused code (`leadsForSeller`, `RFQ_FIELD`, `findSellerOfUser`, `ProcessId`, `COMMODITY_LABEL`, unused imports, unused modal/grad-text CSS, old `/login?as=SELLER` redirect); `robots.txt` is now a route using the real domain (was hardcoded localhost); cookies use SvelteKit's secure default (HTTPS-only except localhost) instead of `secure: false`; fake help-desk number removed — real contact comes from `.env` (`HELPDESK_PHONE`, `HELPDESK_HOURS`, hidden when empty).
 - **2026-10-09** — Separate sessions per role: `ey_buyer` / `ey_seller` / `ey_admin` cookies, URL decides identity, buyer + seller + admin tabs work in one browser; same mobile/email allowed once per role (unique `{role, phone}` / `{role, email}`); per-side notification inboxes; header switcher; logout per side; prefilled second sign-up; +91 phone dropdown on all phone fields. `npm run db:migrate` upgrades an existing DB (drops old unique phone/email indexes, removes old shared sessions). Verified 33/33.
 - **2026-10-09** — Fix: restored the `/buyer` and `/seller` rules in `rolesFor()` (they had been commented out, so wrong-role visitors got a bare 403 instead of the /denied page, and the areas relied only on per-page checks); removed a debug `console.log` in `hooks.server.ts` that printed each user's password hash, email and phone on every request. Verified 17/17 access checks.

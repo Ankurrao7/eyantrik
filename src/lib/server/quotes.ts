@@ -1,7 +1,8 @@
 // Quotation rules, form parsing and buyer "things to consider" insights.
 
 import { DELIVERY_TIMELINES, PROCESS_LABEL } from '../taxonomy.ts';
-import { effectiveProcesses } from '../rfqFields.ts';
+import { effectiveProcesses, pickedProcesses, processesForSeller } from '../rfqFields.ts';
+import { normalizeProcesses, normalizeShop, shopLabel } from '../processes.ts';
 import { GST_RATES, landed, PAYMENT_TERMS, QUOTE_INCLUSIONS, inr } from '../quote.ts';
 import { db, nextId, now, sellerRating, type NegotiationEvent, type Quote, type QuoteVersion, type Rfq, type Seller } from './db.ts';
 import { scoreMatch } from './matching.ts';
@@ -83,7 +84,7 @@ export function quoteFormDefaults(rfq: Rfq, prev?: QuoteVersion, seller?: Seller
 	const d = !prev && seller?.quoteDefaults?.autoFill ? seller.quoteDefaults : undefined;
 	const in15 = new Date(Date.now() + (d?.validityDays ?? 15) * 86_400_000).toISOString().slice(0, 10);
 	const route: Record<string, string> = {};
-	for (const p of effectiveProcesses(rfq.values)) route[p] = prev?.processRoute.find((r) => r.process === p)?.mode ?? 'IN_HOUSE';
+	for (const p of processesForSeller(rfq.values, seller?.processes ?? [])) route[p] = prev?.processRoute.find((r) => r.process === p)?.mode ?? 'IN_HOUSE';
 	return {
 		unitPrice: prev ? String(prev.unitPrice) : '',
 		quantity: prev ? String(prev.quantity) : String(rfq.values.quantity ?? ''),
@@ -119,7 +120,8 @@ export function parseQuoteForm(
 	prev?: QuoteVersion
 ): { values: QuoteFormValues; errors: Record<string, string>; version?: Omit<QuoteVersion, 'v' | 'at'>; saveDefaults: boolean } {
 	const s = (k: string) => (data.get(k)?.toString() ?? '').trim();
-	const processes = effectiveProcesses(rfq.values);
+	// only the process rows the form actually showed (see quoteFormDefaults)
+	const processes = effectiveProcesses(rfq.values).filter((p) => data.has(`route_${p}`));
 	const values: QuoteFormValues = {
 		unitPrice: s('unitPrice'), quantity: s('quantity'), break1Qty: s('break1Qty'), break1Price: s('break1Price'),
 		break2Qty: s('break2Qty'), break2Price: s('break2Price'), toolingCost: s('toolingCost'),
@@ -227,7 +229,7 @@ export function buyerInsights(q: Quote, rfq: Rfq, seller: Seller, all: Quote[]):
 	const prices = live.map((x) => landed(latest(x)).perPiece);
 	const mine = landed(v).perPiece;
 	const match = scoreMatch(seller, rfq);
-	const wanted = effectiveProcesses(rfq.values);
+	const picked = pickedProcesses(rfq.values);
 
 	if (live.length > 1) {
 		const med = median(prices);
@@ -238,8 +240,11 @@ export function buyerInsights(q: Quote, rfq: Rfq, seller: Seller, all: Quote[]):
 		if (v.bulkDays === Math.min(...bulk)) out.push({ tone: 'good', text: `Fastest bulk delivery (${v.bulkDays} days).` });
 	}
 
-	const missing = wanted.filter((p) => !seller.processes.includes(p));
+	const own = normalizeProcesses(seller.processes);
+	const missing = picked.filter((p) => !own.includes(p));
 	if (missing.length) out.push({ tone: 'warn', text: `Outside their listed capability: ${missing.map((p) => PROCESS_LABEL[p] ?? p).join(', ')}. Ask for a process sheet or a sample first.` });
+	else if (!picked.length && !match.covers.length)
+		out.push({ tone: 'warn', text: `They don't list any ${shopLabel(normalizeShop(String(rfq.values.commodityCategory ?? ''))).toLowerCase()} work. Ask for a process sheet or a sample first.` });
 	const outsourced = v.processRoute.filter((r) => r.mode === 'OUTSOURCED');
 	if (outsourced.length) out.push({ tone: 'info', text: `Outsources ${outsourced.map((r) => PROCESS_LABEL[r.process] ?? r.process).join(', ')} — ask who does it and who owns quality.` });
 

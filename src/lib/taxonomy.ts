@@ -1,50 +1,25 @@
 // Shared lists used by forms, filters, matching and SEO pages (safe on client and server).
 
-export const PROCESSES = [
-	{ id: 'CNC_MACHINING', label: 'CNC Machining (VMC / HMC)' },
-	{ id: 'CNC_TURNING', label: 'CNC Turning / Lathe' },
-	{ id: 'SHEET_METAL', label: 'Sheet Metal Fabrication' },
-	{ id: 'PRESS_STAMPING', label: 'Press / Stamping' },
-	{ id: 'LASER_CUTTING', label: 'Laser / Plasma Cutting' },
-	{ id: 'DIE_CASTING', label: 'Pressure Die Casting' },
-	{ id: 'SAND_CASTING', label: 'Sand / Gravity Casting' },
-	{ id: 'INVESTMENT_CASTING', label: 'Investment Casting' },
-	{ id: 'FORGING', label: 'Forging' },
-	{ id: 'INJECTION_MOULDING', label: 'Plastic Injection Moulding' },
-	{ id: 'RUBBER_MOULDING', label: 'Rubber Moulding' },
-	{ id: 'TOOL_DIE', label: 'Tool, Die & Mould Making' },
-	{ id: 'WELDING_FABRICATION', label: 'Welding & Structural Fabrication' },
-	{ id: 'GEAR_MANUFACTURING', label: 'Gear Manufacturing' },
-	{ id: 'GRINDING', label: 'Grinding / Honing' },
-	{ id: 'HEAT_TREATMENT', label: 'Heat Treatment' },
-	{ id: 'SURFACE_TREATMENT', label: 'Plating / Anodizing / Powder Coating' },
-	{ id: '3D_PRINTING', label: '3D Printing / Rapid Prototyping' },
-	{ id: 'ASSEMBLY', label: 'Assembly & Sub-assembly' },
-	{ id: 'INSPECTION_TESTING', label: 'Inspection & Testing (CMM / NDT)' },
-	{ id: 'PCB_ELECTRONICS', label: 'PCB / Electronics Assembly' }
-] as const;
+import { ALL_PROCESSES, LEGACY_PROCESS_MAP, normalizeShop, processesOfShop, SHOPS } from './processes.ts';
 
-export const PROCESS_LABEL: Record<string, string> = Object.fromEntries(
-	PROCESSES.map((p) => [p.id, p.label])
-);
+// Processes: the full Shop → Group → Process list lives in processes.ts. These flat views keep the
+// rest of the app simple (dropdowns, labels, matching).
+export const PROCESSES = ALL_PROCESSES.map((p) => ({ id: p.id, label: p.label }));
+
+/** Label for any process id — also old ids (before 2026-10-12) still found in older records. */
+export const PROCESS_LABEL: Record<string, string> = {
+	...Object.fromEntries(Object.entries(LEGACY_PROCESS_MAP).map(([old, ids]) => [old, ids.map((id) => ALL_PROCESSES.find((p) => p.id === id)?.label ?? id).join(' / ')])),
+	...Object.fromEntries(ALL_PROCESSES.map((p) => [p.id, p.label]))
+};
 
 // ---- Common categories shared by the RFQ form, seller profiles and the shop filter ----
 // Buyers and sellers are tagged with the SAME ids, so filtering/ranking compares like with like.
 
-/** Commodity category → the processes it contains (drives the dependent Process list). */
-export const COMMODITY_CATEGORIES = [
-	{ id: 'METAL_CUTTING', label: 'Metal cutting (CNC machining, turning, laser)', processes: ['CNC_MACHINING', 'CNC_TURNING', 'LASER_CUTTING', 'GRINDING', 'GEAR_MANUFACTURING'] },
-	{ id: 'METAL_FORMING', label: 'Metal forming (sheet metal, forging, bending)', processes: ['SHEET_METAL', 'PRESS_STAMPING', 'FORGING'] },
-	{ id: 'CASTING', label: 'Casting (sand, die, investment)', processes: ['SAND_CASTING', 'DIE_CASTING', 'INVESTMENT_CASTING'] },
-	{ id: 'MOLDING', label: 'Molding (injection, blow, RTM)', processes: ['INJECTION_MOULDING', 'RUBBER_MOULDING'] },
-	{ id: 'TREATMENT', label: 'Treatment (heat, surface)', processes: ['HEAT_TREATMENT', 'SURFACE_TREATMENT'] },
-	{ id: 'ASSEMBLY_FABRICATION', label: 'Assembly / fabrication', processes: ['WELDING_FABRICATION', 'ASSEMBLY', 'PCB_ELECTRONICS', 'INSPECTION_TESTING'] },
-	{ id: 'TOOLING', label: 'Tooling (dies, moulds, fixtures)', processes: ['TOOL_DIE'] },
-	{ id: 'ADDITIVE', label: 'Additive / rapid prototyping (3D printing)', processes: ['3D_PRINTING'] }
-] as const;
+/** "Type of work" on the requirement form = a shop; it narrows the process list. (Field name kept: commodityCategory.) */
+export const COMMODITY_CATEGORIES = SHOPS.map((s) => ({ id: s.id, label: s.label, processes: processesOfShop(s.id) }));
 
 export function processesForCommodity(id: string): string[] {
-	return [...(COMMODITY_CATEGORIES.find((c) => c.id === id)?.processes ?? [])];
+	return processesOfShop(normalizeShop(id));
 }
 
 /** Material family → example grades (suggestions for the free-text Material field). */

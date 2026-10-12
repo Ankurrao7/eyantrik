@@ -1,7 +1,8 @@
 <!-- Seller profile fields, shared by /seller/onboarding (self) and /admin Add seller (team). -->
 <script lang="ts">
 	import PhoneInput from './PhoneInput.svelte';
-	import { INDIAN_STATES, INDUSTRIES, MATERIAL_CATEGORIES, PROCESSES } from '../taxonomy.ts';
+	import ProcessPicker from './ProcessPicker.svelte';
+	import { INDIAN_STATES, INDUSTRIES, MATERIAL_CATEGORIES } from '../taxonomy.ts';
 
 	type Values = {
 		companyName?: string; contactPerson?: string; phone?: string; whatsapp?: string; email?: string;
@@ -112,12 +113,9 @@
 <fieldset>
 	<legend>Capabilities</legend>
 	<div class="field" class:invalid={errors.processes}>
-		<span class="label" id="proc-label">Processes you do in-house <span class="req">*</span></span>
-		<div class="checks" role="group" aria-labelledby="proc-label">
-			{#each PROCESSES as p (p.id)}
-				<label><input type="checkbox" name="processes" value={p.id} checked={values.processes?.includes(p.id)} /> {p.label}</label>
-			{/each}
-		</div>
+		<span class="label" id="proc-label">What work does your factory do in-house? <span class="req">*</span></span>
+		<span class="hint">Open a shop and tick everything you do yourself, or use the search box (e.g. VMC, wire cut, powder coating). Buyers only see requirements that match what you tick.</span>
+		<ProcessPicker name="processes" selected={values.processes ?? []} mode="seller" />
 		{#if errors.processes}<span class="err">{errors.processes}</span>{/if}
 	</div>
 	<div class="field" class:invalid={errors.materials}>

@@ -3,7 +3,7 @@ import { canSeeSellerContacts, sellerContactLock } from '#lib/server/auth.ts';
 import { db, sellerRating } from '#lib/server/db.ts';
 import { toPublicSeller } from '#lib/server/matching.ts';
 import { listedSellers } from '#lib/server/sellers.ts';
-import { PROCESSES } from '#lib/taxonomy.ts';
+import { processesOfShop, SHOPS } from '#lib/processes.ts';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -19,11 +19,11 @@ export const load: PageServerLoad = async ({ locals }) => {
 		.slice(0, 4)
 		.map((s) => toPublicSeller(s, showContacts));
 
-	const categories = PROCESSES.map((p) => ({
-		id: p.id,
-		label: p.label,
-		count: sellers.filter((s) => s.processes.includes(p.id)).length
-	})).sort((a, b) => b.count - a.count);
+	// Browse by type of work: every shop, with how many listed suppliers do any of its processes.
+	const categories = SHOPS.map((sh) => {
+		const ids = processesOfShop(sh.id);
+		return { id: sh.id, label: sh.label, emoji: sh.emoji, examples: sh.examples, count: sellers.filter((s) => s.processes.some((p) => ids.includes(p))).length };
+	});
 
 	return {
 		featured,

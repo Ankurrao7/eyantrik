@@ -1,7 +1,10 @@
 <!-- Renders one RFQ_FIELDS entry. Keeps the form fully driven by src/lib/rfqFields.ts. -->
 <script lang="ts">
 	import type { RfqField } from '../rfqFields.ts';
-	import { MATERIAL_CATEGORIES, processesForCommodity } from '../taxonomy.ts';
+	import { MATERIAL_CATEGORIES } from '../taxonomy.ts';
+	import { normalizeShop } from '../processes.ts';
+	import ProcessPicker from './ProcessPicker.svelte';
+	import WorkTypePicker from './WorkTypePicker.svelte';
 
 	let {
 		field,
@@ -21,17 +24,9 @@
 	const list = $derived(Array.isArray(value) ? value : []);
 	const today = new Date().toISOString().slice(0, 10);
 
-	// Process list narrowed by the chosen commodity category (all options when none chosen).
-	// Already-ticked options always stay visible so a choice is never silently dropped.
-	let showAll = $state(false);
 	let selected = $state<string[]>([]);
 	$effect(() => {
 		selected = [...list];
-	});
-	const visibleOptions = $derived.by(() => {
-		if (field.filterBy !== 'commodityCategory' || !context.commodityCategory || showAll) return field.options ?? [];
-		const allowed = processesForCommodity(context.commodityCategory);
-		return (field.options ?? []).filter((o) => allowed.includes(o.value) || selected.includes(o.value));
 	});
 
 	const suggestions = $derived(
@@ -54,15 +49,19 @@
 				{#if field.help}<span class="hint">{field.help}</span>{/if}
 			</span>
 		</label>
-	{:else if field.type === 'multiselect'}
+	{:else if field.widget === 'workType'}
+		<span class="label" id="{id}-label">{field.label} {#if field.required}<span class="req">*</span>{/if}</span>
+		<WorkTypePicker name={field.name} value={str} required={field.required} />
+	{:else if field.widget === 'processPicker'}
 		<span class="label" id="{id}-label">{field.label} {#if field.required}<span class="req">*</span>{/if}</span>
 		{#if field.filterBy && !context.commodityCategory}
-			<span class="hint">Choose a commodity category to narrow this list.</span>
-		{:else if field.filterBy}
-			<label class="hint row gap" style="font-weight:400"><input type="checkbox" bind:checked={showAll} /> Show all processes (multi-process part)</label>
+			<span class="hint">Choose the kind of work above first — or search here.</span>
 		{/if}
+		<ProcessPicker name={field.name} selected={list} mode="buyer" shop={normalizeShop(context.commodityCategory ?? '')} />
+	{:else if field.type === 'multiselect'}
+		<span class="label" id="{id}-label">{field.label} {#if field.required}<span class="req">*</span>{/if}</span>
 		<div class="checks" role="group" aria-labelledby="{id}-label">
-			{#each visibleOptions as o (o.value)}
+			{#each field.options ?? [] as o (o.value)}
 				<label><input type="checkbox" name={field.name} value={o.value} bind:group={selected} /> {o.label}</label>
 			{/each}
 		</div>

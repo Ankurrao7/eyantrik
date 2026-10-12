@@ -4,7 +4,8 @@
 import { normalizePhone, PHONE_ERROR } from './auth.ts';
 import type { Machine, SellerDocument } from './db.ts';
 import { gstinTaken } from './sellers.ts';
-import { INDIAN_STATES, INDUSTRIES, MATERIAL_CATEGORIES, PROCESSES } from '../taxonomy.ts';
+import { INDIAN_STATES, INDUSTRIES, MATERIAL_CATEGORIES } from '../taxonomy.ts';
+import { normalizeProcesses } from '../processes.ts';
 
 const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 
@@ -82,7 +83,7 @@ export async function parseSellerForm(
 		pincode: s('pincode'),
 		yearEstablished: s('yearEstablished'),
 		about: s('about'),
-		processes: data.getAll('processes').map(String).filter((p) => PROCESSES.some((x) => x.id === p)),
+		processes: normalizeProcesses(data.getAll('processes').map(String)),
 		materials: data.getAll('materials').map(String).filter((m) => MATERIAL_CATEGORIES.some((x) => x.id === m)),
 		industries: data.getAll('industries').map(String).filter((i) => INDUSTRIES.some((x) => x.id === i)),
 		machines: names.map((name, i) => ({ name, count: counts[i] ?? '' })).filter((m) => m.name || m.count),
@@ -123,7 +124,7 @@ export async function parseSellerForm(
 	}
 	if (input.about.length < 20) e.about = 'Describe your work in at least 20 characters (what you make, for which industries).';
 	if (input.about.length > 1000) e.about = 'Keep it under 1000 characters.';
-	if (input.processes.length === 0) e.processes = 'Select at least one process.';
+	if (input.processes.length === 0) e.processes = 'Tick at least one kind of work you do.';
 	if (input.materials.length === 0) e.materials = 'Select at least one material family.';
 
 	const machines: Machine[] = [];

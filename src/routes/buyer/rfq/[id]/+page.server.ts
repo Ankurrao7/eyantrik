@@ -5,7 +5,8 @@ import { db, nextId, now } from '#lib/server/db.ts';
 import { matchedSellersFor, toPublicSeller } from '#lib/server/matching.ts';
 import { addRating, findSellerById, sellersById } from '#lib/server/sellers.ts';
 import { interestedCount, isQuotingOpen } from '#lib/server/quotes.ts';
-import { effectiveProcesses } from '#lib/rfqFields.ts';
+import { pickedProcesses } from '#lib/rfqFields.ts';
+import { normalizeShop, shopLabel } from '#lib/processes.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 const SORTS: QuoteSort[] = ['price', 'distance', 'lead', 'rating'];
@@ -48,7 +49,8 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
 		passed: responses.filter((r) => r.kind === 'NOT_FOR_US').length,
 		matches,
 		feedback,
-		wanted: effectiveProcesses(rfq.values),
+		wanted: pickedProcesses(rfq.values),
+		workType: shopLabel(normalizeShop(String(rfq.values.commodityCategory ?? ''))),
 		ndaAcceptedCount: rfq.ndaAcceptedBy.length,
 		openTicket: ticket ? { id: ticket.id, status: ticket.status } : null,
 		justPosted: url.searchParams.get('posted') === '1'

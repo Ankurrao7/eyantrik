@@ -125,7 +125,7 @@
 							<tr class:dead={!q.live} class:won={q.status === 'ACCEPTED'}>
 								<td>
 									<a href="/buyer/rfq/{r.id}/quotes/{q.id}"><strong>{q.seller.companyName}</strong></a>
-									<div class="tiny muted">{q.seller.city} · {q.seller.rating ? `★ ${q.seller.rating}` : 'no reviews'} · covers {q.covers}/{q.wanted} itself</div>
+									<div class="tiny muted">{q.seller.city} · {q.seller.rating ? `★ ${q.seller.rating}` : 'no reviews'} · {q.wanted ? `covers ${q.covers}/${q.wanted} itself` : q.covers ? 'does this work itself' : 'not in their listed work'}</div>
 									<div class="mt-xs"><VerificationBadge status={q.seller.verification} /></div>
 								</td>
 								<td class="num"><strong class:best={q.live && q.landed.perPiece === best.price}>{inr(q.landed.perPiece)}</strong><div class="tiny muted">unit {inr(q.unitPrice)} · v{q.version}</div></td>
@@ -194,8 +194,13 @@
 									{#if m.contactedYou}<div class="tiny" style="color:var(--brand)">← They contacted you</div>{/if}
 								</td>
 								<td>
-									<strong>{m.covers.length}/{wanted.length}</strong>
-									<div>{#each wanted as p}<span class="chip" class:hit={m.covers.includes(p)}>{PROCESS_LABEL[p] ?? p}</span>{/each}</div>
+									{#if wanted.length}
+										<strong>{m.covers.length}/{wanted.length}</strong>
+										<div>{#each wanted as p}<span class="chip" class:hit={m.covers.includes(p)}>{PROCESS_LABEL[p] ?? p}</span>{/each}</div>
+									{:else}
+										<!-- buyer chose only a type of work: show what this supplier does in it -->
+										<div>{#each m.covers.slice(0, 4) as p}<span class="chip hit">{PROCESS_LABEL[p] ?? p}</span>{/each}{#if m.covers.length > 4}<span class="chip">+{m.covers.length - 4} more</span>{/if}</div>
+									{/if}
 								</td>
 								<td class="num small">{m.distanceKm === null ? '—' : `~${m.distanceKm} km`}<div class="tiny muted">{PIN_ZONE_LABEL[m.zone]}</div></td>
 								<td class="small">{m.seller.city}, {m.seller.state}{#if m.materialMatch}<div class="tiny" style="color:var(--ok)">✓ Works with this material</div>{/if}</td>

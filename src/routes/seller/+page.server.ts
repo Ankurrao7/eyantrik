@@ -7,7 +7,8 @@ import { findSellerById } from '#lib/server/sellers.ts';
 import { isQuotingOpen, latest, liveQuoteCount, markInterested, pendingCounter, sellerResponse } from '#lib/server/quotes.ts';
 import { byNearness } from '#lib/geo.ts';
 import { landed } from '#lib/quote.ts';
-import { effectiveProcesses } from '#lib/rfqFields.ts';
+import { pickedProcesses } from '#lib/rfqFields.ts';
+import { normalizeShop, shopLabel } from '#lib/processes.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 const TABS = ['matched', 'all', 'interested', 'quoted', 'negotiating', 'won', 'lost'] as const;
@@ -51,7 +52,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			else if (quote && ['SUBMITTED', 'SHORTLISTED'].includes(quote.status) && rfq.status === 'OPEN') bucket = 'quoted';
 			else if (open && response?.kind === 'INTERESTED') bucket = 'interested';
 			else if (open && response?.kind !== 'NOT_FOR_US') bucket = m.score > 0 ? 'matched' : 'all';
-			const wanted = effectiveProcesses(rfq.values);
+			const picked = pickedProcesses(rfq.values);
+			const wanted = picked.length ? picked : m.covers;
 			return {
 				bucket,
 				id: rfq.id,
@@ -59,6 +61,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 				quantity: String(rfq.values.quantity ?? ''),
 				values: rfq.values,
 				wanted,
+				/** set when the buyer chose only a type of work, e.g. "Machine shop (CNC & lathe)" */
+				anyOf: picked.length ? null : shopLabel(normalizeShop(String(rfq.values.commodityCategory ?? ''))),
 				covers: m.covers,
 				isMatch: m.score > 0,
 				zone: m.zone,

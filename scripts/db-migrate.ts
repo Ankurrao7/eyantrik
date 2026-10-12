@@ -26,5 +26,20 @@ console.log('index users {role, email} and {role, phone} ✔');
 const old = await mongo.collection('sessions').deleteMany({ role: { $exists: false } });
 console.log(`removed ${old.deletedCount} old shared session(s) — users log in again once`);
 
+// 2026-10-12 — new process list (13 shops, ~140 processes): convert sellers' old process ids.
+const { normalizeProcesses } = await import('../src/lib/processes.ts');
+const sellers = mongo.collection('sellers');
+let converted = 0;
+for (const s of await sellers.find({}, { projection: { id: 1, processes: 1 } }).toArray()) {
+	const before: string[] = s.processes ?? [];
+	const after = normalizeProcesses(before);
+	if (after.length !== before.length || after.some((p, i) => p !== before[i])) {
+		await sellers.updateOne({ _id: s._id }, { $set: { processes: after } });
+		console.log(`seller ${s.id}: ${before.join(', ')}  →  ${after.join(', ')}`);
+		converted++;
+	}
+}
+console.log(`process ids converted for ${converted} seller(s)`);
+
 await client.close();
 console.log('Migration done ✔');

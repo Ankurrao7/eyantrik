@@ -3,7 +3,8 @@
 // so a locked number never reaches the page source.
 
 import { byNearness, coordsFor, distanceKm, nearZone } from '../geo.ts';
-import { effectiveProcesses } from '../rfqFields.ts';
+import { effectiveProcesses, pickedProcesses } from '../rfqFields.ts';
+import { normalizeProcesses } from '../processes.ts';
 import type { PublicSeller } from '../types.ts';
 import { sellerRating, type Rfq, type Seller, type User } from './db.ts';
 import { listedSellers } from './sellers.ts';
@@ -56,14 +57,18 @@ export interface Match {
  * industry experience, verification depth and buyer rating add to it.
  */
 export function scoreMatch(seller: Seller, rfq: Rfq): Match {
+	const picked = pickedProcesses(rfq.values);
 	const wanted = effectiveProcesses(rfq.values);
-	const covers = wanted.filter((p) => seller.processes.includes(p));
+	const own = normalizeProcesses(seller.processes);
+	const covers = wanted.filter((p) => own.includes(p));
 	const distance = sellerDistanceKm(seller, rfq);
 	const zone = nearZone(seller.pincode, String(rfq.values.deliveryPincode ?? ''), distance);
 	const materialMatch = seller.materials.includes(String(rfq.values.materialCategory ?? ''));
 	if (covers.length === 0) return { seller, score: 0, covers, distanceKm: distance, zone, materialMatch };
 
-	let score = covers.length * 10;
+	// Buyer named processes → each one covered counts. Buyer only chose a type of work → "works in it"
+	// counts once, so a seller who ticked 20 boxes doesn't out-rank a specialist.
+	let score = (picked.length ? covers.length : 1) * 10;
 	if (distance !== null) score += Math.max(0, 8 - distance / 100); // 0 km → +8, 800 km+ → 0
 	if (materialMatch) score += 4;
 	if (seller.industries.includes(String(rfq.values.industry ?? ''))) score += 2;

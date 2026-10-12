@@ -124,7 +124,7 @@
 						<span>⏱ {TIMELINE_LABEL[String(l.values.deliveryTimeline)] ?? '—'}</span>
 					</div>
 					<div class="mt">
-						{#each l.wanted as p}<span class="chip" class:hit={l.covers.includes(p)}>{l.covers.includes(p) ? '✓' : '✗'} {PROCESS_LABEL[p] ?? p}</span>{/each}
+						{#if l.anyOf}<span class="chip">Any · {l.anyOf}</span>{/if}{#each l.wanted as p}<span class="chip" class:hit={l.covers.includes(p)}>{l.covers.includes(p) ? '✓' : '✗'} {PROCESS_LABEL[p] ?? p}</span>{/each}
 					</div>
 					{#if !l.isMatch}<p class="tiny muted mb-0">Outside your listed processes — you can still quote; the buyer will see it flagged.</p>{/if}
 

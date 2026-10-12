@@ -16,6 +16,7 @@ import {
 	PROCESSES,
 	processesForCommodity
 } from './taxonomy.ts';
+import { normalizeProcesses } from './processes.ts';
 import { QUOTE_WINDOWS } from './quote.ts';
 
 export type FieldType = 'text' | 'textarea' | 'number' | 'select' | 'multiselect' | 'date' | 'file' | 'checkbox';
@@ -27,6 +28,8 @@ export interface RfqField {
 	required?: boolean;
 	/** Used by matching / unlocking / ranking — keep these (labels can change freely). */
 	core?: boolean;
+	/** special input: shop cards (type of work) or the process picker */
+	widget?: 'workType' | 'processPicker';
 	placeholder?: string;
 	/** pre-selected value for a new form */
 	defaultValue?: string;
@@ -60,16 +63,17 @@ export const RFQ_FIELDS: RfqField[] = [
 	{ name: 'description', label: 'Description', type: 'textarea', maxLength: 2000, placeholder: 'Detailed specifications, application, notes suppliers should see.', section: 'Part' },
 	{ name: 'industry', label: 'Industry', type: 'select', required: true, core: true, options: INDUSTRIES.map((i) => ({ value: i.id, label: i.label })), section: 'Part', width: 'half' },
 	{ name: 'budgetRange', label: 'Budget range', type: 'select', required: true, core: true, options: BUDGET_RANGES.map((b) => ({ value: b.id, label: b.label })), section: 'Part', width: 'half' },
-	{ name: 'commodityCategory', label: 'Commodity category', type: 'select', required: true, core: true, options: COMMODITY_CATEGORIES.map((c) => ({ value: c.id, label: c.label })), section: 'Part', width: 'half' },
-	{ name: 'materialCategory', label: 'Material category', type: 'select', required: true, core: true, options: MATERIAL_CATEGORIES.map((m) => ({ value: m.id, label: m.label })), section: 'Part', width: 'half' },
+	{ name: 'commodityCategory', label: 'What kind of work is it?', type: 'select', widget: 'workType', required: true, core: true, options: COMMODITY_CATEGORIES.map((c) => ({ value: c.id, label: c.label })), help: 'Pick the closest match — the example parts help. Not sure? Choose what sounds right; our team can adjust it.', section: 'Part' },
+	{ name: 'materialCategory', label: 'Material type', type: 'select', required: true, core: true, options: MATERIAL_CATEGORIES.map((m) => ({ value: m.id, label: m.label })), section: 'Part', width: 'half' },
 	{ name: 'material', label: 'Material', type: 'text', required: true, maxLength: 80, placeholder: 'e.g. EN8, SS304, Al6061', suggestFrom: 'materialCategory', section: 'Part' },
 	{
 		name: 'processes',
-		label: 'Manufacturing process',
+		label: 'Which process? (optional)',
 		type: 'multiselect',
+		widget: 'processPicker',
 		core: true,
 		filterBy: 'commodityCategory',
-		help: 'Optional — pick every process the part needs (multi-process parts can use “Show all processes”). If left empty we match on the whole commodity category.',
+		help: 'Not sure? Leave it empty — every supplier in that type of work will see your requirement.',
 		options: PROCESSES.map((p) => ({ value: p.id, label: p.label })),
 		section: 'Part'
 	},
@@ -115,10 +119,24 @@ export interface ParsedRfq {
 	errors: Record<string, string>;
 }
 
-/** Processes used for matching: the ones picked, or the whole commodity category if none were picked. */
+/** Processes the buyer named (old ids converted). Empty = "any process in the chosen type of work". */
+export function pickedProcesses(values: RfqValues): string[] {
+	return normalizeProcesses(Array.isArray(values.processes) ? values.processes : []);
+}
+
+/** Every process that counts as a match: the ones picked, or the whole type of work (shop) if none were picked. */
 export function effectiveProcesses(values: RfqValues): string[] {
-	const picked = Array.isArray(values.processes) ? values.processes : [];
+	const picked = pickedProcesses(values);
 	return picked.length ? picked : processesForCommodity(String(values.commodityCategory ?? ''));
+}
+
+/** Processes that matter for ONE seller: what the buyer picked, or — if the buyer only chose a type of
+ *  work — what this seller does within it. Keeps screens short (no list of 20 processes per requirement). */
+export function processesForSeller(values: RfqValues, sellerProcesses: readonly string[]): string[] {
+	const picked = pickedProcesses(values);
+	if (picked.length) return picked;
+	const own = normalizeProcesses(sellerProcesses);
+	return effectiveProcesses(values).filter((p) => own.includes(p));
 }
 
 /** Validates submitted form data against RFQ_FIELDS. Used on the server. */

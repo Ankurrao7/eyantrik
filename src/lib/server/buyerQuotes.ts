@@ -8,7 +8,7 @@ import { notifySeller } from './notify.ts';
 import { sellersById } from './sellers.ts';
 import { addEvent, buyerInsights, counterRounds, isLive, latest, pendingCounter } from './quotes.ts';
 import { landed, MAX_COUNTER_ROUNDS, inr } from '../quote.ts';
-import { effectiveProcesses } from '../rfqFields.ts';
+import { pickedProcesses } from '../rfqFields.ts';
 
 export function ownRfq(locals: App.Locals, url: URL, id: string) {
 	const user = requireUser(locals, url, ['BUYER']);
@@ -45,7 +45,8 @@ export async function quoteRows(rfq: Rfq, sort: QuoteSort = 'price') {
 			zone: m.zone,
 			/** processes of this RFQ the supplier lists as its own capability */
 			covers: m.covers.length,
-			wanted: effectiveProcesses(rfq.values).length,
+			/** 0 = buyer chose only a type of work */
+			wanted: pickedProcesses(rfq.values).length,
 			landed: landed(v),
 			unitPrice: v.unitPrice,
 			toolingCost: v.toolingCost,

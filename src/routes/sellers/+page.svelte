@@ -2,12 +2,13 @@
 	import { page } from '$app/state';
 	import SellerCard from '#lib/components/SellerCard.svelte';
 	import { PROCESS_LABEL } from '#lib/taxonomy.ts';
+	import { isShopId, shopLabel } from '#lib/processes.ts';
 
 	let { data } = $props();
 
 	const heading = $derived.by(() => {
 		const parts: string[] = [];
-		if (data.filters.process) parts.push(PROCESS_LABEL[data.filters.process] ?? data.filters.process);
+		if (data.filters.process) parts.push(isShopId(data.filters.process) ? shopLabel(data.filters.process) : (PROCESS_LABEL[data.filters.process] ?? data.filters.process));
 		parts.push('manufacturers');
 		if (data.filters.state) parts.push(`in ${data.filters.state}`);
 		const h = parts.join(' ');
@@ -35,13 +36,18 @@
 			<form method="GET" action="/sellers">
 				<div class="field">
 					<label for="q">Keyword</label>
-					<input id="q" type="search" name="q" value={data.filters.q} placeholder="e.g. VMC, aluminium, Faridabad" />
+					<input id="q" type="search" name="q" value={data.filters.q} placeholder="e.g. VMC, wire cut, aluminium, Faridabad" />
 				</div>
 				<div class="field">
-					<label for="process">Process</label>
+					<label for="process">Type of work or process</label>
 					<select id="process" name="process" value={data.filters.process}>
-						<option value="">All processes</option>
-						{#each data.processOptions as p}<option value={p.id}>{p.label}</option>{/each}
+						<option value="">Any kind of work</option>
+						{#each data.processGroups as g (g.id)}
+							<optgroup label={g.label}>
+								<option value={g.id}>All · {g.label}</option>
+								{#each g.processes as p (p.id)}<option value={p.id}>{p.label}</option>{/each}
+							</optgroup>
+						{/each}
 					</select>
 				</div>
 				<div class="field">
