@@ -2,7 +2,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth.ts';
 import { now } from '#lib/server/db.ts';
 import { findSellerById, insertSeller, nextSellerId, uniqueSlug, updateSeller } from '#lib/server/sellers.ts';
-import { parseSellerForm } from '#lib/server/sellerForm.ts';
+import { attributeFields, capabilityValues, parseSellerForm } from '#lib/server/sellerForm.ts';
 import { updateUser } from '#lib/server/users.ts';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -19,10 +19,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			? {
 					companyName: existing.companyName, contactPerson: existing.contactPerson, whatsapp: existing.whatsapp,
 					email: existing.email ?? '', gstin: existing.gstin, address: existing.address, city: existing.city,
-					state: existing.state, pincode: existing.pincode, yearEstablished: existing.yearEstablished ? String(existing.yearEstablished) : '',
-					about: existing.about, processes: existing.processes, materials: existing.materials, industries: existing.industries,
-					machines: existing.machines.map((m) => ({ name: m.name, count: String(m.count) })),
-					certifications: existing.certifications.join(', ')
+					state: existing.state, pincode: existing.pincode,
+					...capabilityValues(existing)
 				}
 			: { companyName: user.companyName, contactPerson: user.name }
 	};
@@ -64,6 +62,7 @@ export const actions: Actions = {
 			industries: input.industries,
 			machines: clean.machines,
 			certifications: clean.certifications,
+			...attributeFields(input),
 			documents: clean.documents,
 			verification: 'DOCS_SUBMITTED' as const,
 			rejectionReason: undefined,

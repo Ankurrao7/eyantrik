@@ -1,8 +1,13 @@
-<!-- Seller verification review — everything the admin needs on one screen:
-     automatic checks · details · documents (viewed in place) · checklist + decision · history. -->
+<!-- Supplier file (admin only) — everything about one company on one screen, at every stage:
+     automatic checks · full details & contacts (never blurred) · documents (viewed in place) ·
+     verification decision · platform activity · account control · history.
+     The admin can't edit the supplier's details: those are entered by the supplier only. -->
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import VerificationBadge from '#lib/components/VerificationBadge.svelte';
+	import AccountBadge from '#lib/components/AccountBadge.svelte';
+	import AccountControl from '#lib/components/AccountControl.svelte';
+	import ProfileRing from '#lib/components/ProfileRing.svelte';
 
 	let { data, form } = $props();
 	const s = $derived(data.seller);
@@ -29,7 +34,15 @@
 	};
 	const actionLabel: Record<string, string> = {
 		SUBMITTED: 'Submitted documents', RESUBMITTED: 'Resubmitted after changes', ADDED_BY_TEAM: 'Added by the team',
-		DOCS_VERIFIED: 'Documents verified', CHANGES_REQUESTED: 'Sent back for changes', GROUND_VERIFIED: 'Factory visit recorded', NOTE: 'Note'
+		DOCS_VERIFIED: 'Documents verified', CHANGES_REQUESTED: 'Sent back for changes', GROUND_VERIFIED: 'Factory visit recorded', NOTE: 'Note',
+		SUSPENDED: 'Account suspended', DEACTIVATED: 'Account deactivated', REACTIVATED: 'Account reactivated', PROFILE_UPDATED: 'Profile updated by seller'
+	};
+	const a = $derived(data.activity);
+	const inr = (n: number) => '₹' + Math.round(n).toLocaleString('en-IN');
+	const day = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+	const quoteStatus: Record<string, string> = {
+		SUBMITTED: 'Submitted', SHORTLISTED: 'Shortlisted', NEGOTIATING: 'Negotiating', ACCEPTED: 'Won', DECLINED: 'Declined',
+		NOT_SELECTED: 'Not selected', WITHDRAWN: 'Withdrawn', OUTDATED: 'Needs re-quote'
 	};
 	const keep = () => async ({ update }: { update: (o?: { reset?: boolean }) => Promise<void> }) => {
 		await update({ reset: false });
@@ -37,19 +50,18 @@
 	};
 </script>
 
-<svelte:head><title>Review {s.companyName} · Admin · eYantrik</title><meta name="robots" content="noindex" /></svelte:head>
+<svelte:head><title>{s.companyName} · Supplier · Admin · eYantrik</title><meta name="robots" content="noindex" /></svelte:head>
 
 <main class="container">
-	<a href="/admin" class="small">← Work queue</a>
+	<div class="row gap small"><a href="/admin?tab=suppliers">← All suppliers</a><a href="/admin">Work queue</a></div>
 	<div class="row between top gap mt">
 		<div>
 			<h1 class="mb-0">{s.companyName}</h1>
 			<p class="muted small mb-0">
-				{s.city}, {s.state} · {s.onboardedBy === 'SELF' ? 'Self-registered' : 'Added by the team'} · submitted {ago(s.submittedAt ?? s.createdAt)}
-				· <a href="/sellers/{s.slug}" target="_blank" rel="noopener">public profile ↗</a>
+				{s.id} · {s.city}, {s.state} · {s.onboardedBy === 'SELF' ? 'Self-registered' : 'Added by the team'} · joined {day(s.createdAt)} · submitted {ago(s.submittedAt ?? s.createdAt)}
 			</p>
 		</div>
-		<VerificationBadge status={s.verification} />
+		<div class="row gap"><VerificationBadge status={s.verification} /><AccountBadge status={data.account.status} /></div>
 	</div>
 
 	{#if form && 'message' in form && form.message}<div class="alert ok mt" role="status">{form.message} <a href="/admin">Back to the work queue →</a></div>{/if}
@@ -71,13 +83,31 @@
 			</section>
 
 			<section class="card">
-				<h2>Details entered by the seller</h2>
+				<h2>Contact</h2>
+				<dl class="details">
+					<dt>Contact person</dt><dd><strong>{s.contactPerson}</strong></dd>
+					<dt>Mobile</dt><dd><a href="tel:+91{s.phone}">+91 {s.phone}</a></dd>
+					<dt>WhatsApp</dt><dd><a href="https://wa.me/91{s.whatsapp}" target="_blank" rel="noopener">+91 {s.whatsapp}</a></dd>
+					<dt>Email</dt><dd>{#if s.email}<a href="mailto:{s.email}">{s.email}</a>{:else}—{/if}</dd>
+					<dt>Factory address</dt><dd>{s.address}, {s.city}, {s.state} {s.pincode}</dd>
+					<dt>Login account</dt>{#if data.owner}<dd>{data.owner.name} · {data.owner.email || '—'} · +91 {data.owner.phone}<div class="tiny muted">{data.owner.id} · since {day(data.owner.createdAt)}</div></dd>{:else}<dd class="muted">No seller login linked</dd>{/if}
+				</dl>
+				<div class="row gap mt">
+					<a class="btn sm" href="tel:+91{s.phone}">📞 Call</a>
+					<a class="btn wa sm" href="https://wa.me/91{s.whatsapp}" target="_blank" rel="noopener">💬 WhatsApp</a>
+					{#if s.email}<a class="btn ghost sm" href="mailto:{s.email}">✉ Email</a>{/if}
+				</div>
+			</section>
+
+			<section class="card">
+				<h2>Company details <span class="tiny muted">(entered by the supplier)</span></h2>
 				<dl class="details">
 					<dt>GSTIN</dt><dd><code>{s.gstin}</code></dd>
-					<dt>Contact person</dt><dd>{s.contactPerson}</dd>
-					<dt>Mobile</dt><dd><a href="tel:+91{s.phone}">+91 {s.phone}</a>{#if s.whatsapp !== s.phone} · WhatsApp +91 {s.whatsapp}{/if}</dd>
-					{#if s.email}<dt>Email</dt><dd>{s.email}</dd>{/if}
-					<dt>Factory address</dt><dd>{s.address}, {s.city}, {s.state} {s.pincode}</dd>
+					<dt>Main type of work</dt><dd>{s.attributes.mainShop || '—'}</dd>
+					<dt>Order sizes</dt><dd>{s.attributes.orderTypes.join(', ') || '—'}</dd>
+					<dt>Team size</dt><dd>{s.attributes.teamSize || '—'}</dd>
+					<dt>Largest part</dt><dd>{s.attributes.maxPartSize || '—'}</dd>
+					<dt>Best tolerance</dt><dd>{s.attributes.bestTolerance || '—'}</dd>
 					{#if s.yearEstablished}<dt>Established</dt><dd>{s.yearEstablished}</dd>{/if}
 					<dt>About</dt><dd>{s.about}</dd>
 					<dt>Work they do</dt><dd>{#each s.processLabels as p}<span class="chip">{p}</span>{/each}</dd>
@@ -85,8 +115,55 @@
 					<dt>Industries</dt><dd>{s.industryLabels.join(', ') || '—'}</dd>
 					<dt>Machines</dt><dd>{s.machines.map((m) => `${m.count}× ${m.name}`).join(', ') || '—'}</dd>
 					<dt>Certifications</dt><dd>{s.certifications.join(', ') || '—'}</dd>
-					{#if data.owner}<dt>Login account</dt><dd>{data.owner.name} · {data.owner.email} · +91 {data.owner.phone}</dd>{/if}
+					{#if s.isEyantrikPlant}<dt>eYantrik plant</dt><dd>Yes — our own plant</dd>{/if}
 				</dl>
+			</section>
+
+			<section class="card">
+				<div class="row gap profile-row">
+					<ProfileRing percent={data.profile.percent} size={56} stroke={5} />
+					<div>
+						<strong>Profile {data.profile.percent}% complete</strong>
+						<div class="tiny muted">{data.profile.missing.length ? `Missing: ${data.profile.missing.map((m) => m.label.toLowerCase()).join(', ')}` : 'Everything filled in.'}</div>
+					</div>
+				</div>
+				<h2 class="mt">Platform activity</h2>
+				<div class="mini-stats">
+					<div><strong>{a.matchedOpen}</strong><span>open leads matching</span></div>
+					<div><strong>{a.interested}</strong><span>marked interested</span></div>
+					<div><strong>{a.quotes.length}</strong><span>quotes sent</span></div>
+					<div><strong>{a.won}</strong><span>orders won</span></div>
+					<div><strong>{a.contactsInTotal}</strong><span>buyer calls / chats</span></div>
+					<div><strong>{a.rating ?? '—'}</strong><span>rating ({a.reviewCount} review{a.reviewCount === 1 ? '' : 's'})</span></div>
+				</div>
+
+				<h3 class="mt">Quotations</h3>
+				{#if a.quotes.length === 0}<p class="muted small mb-0">No quotations yet.</p>{:else}
+					<div class="table-wrap"><table>
+						<thead><tr><th>Requirement</th><th>Status</th><th class="num">Landed / pc</th><th>Updated</th></tr></thead>
+						<tbody>{#each a.quotes as q (q.id)}<tr><td><a href="/admin?tab=requirements#{q.rfqId}">{q.title}</a><div class="tiny muted">{q.rfqId} · v{q.version}</div></td><td><span class="badge {q.status === 'ACCEPTED' ? 'ground' : 'neutral'}">{quoteStatus[q.status] ?? q.status}</span></td><td class="num">{inr(q.perPiece)}</td><td class="small">{day(q.updatedAt)}</td></tr>{/each}</tbody>
+					</table></div>
+				{/if}
+
+				<h3 class="mt">Buyers who contacted them {#if a.contactsInTotal > a.contactsIn.length}<span class="tiny muted">(latest {a.contactsIn.length} of {a.contactsInTotal})</span>{/if}</h3>
+				{#if a.contactsIn.length === 0}<p class="muted small mb-0">None yet.</p>{:else}
+					<ul class="plain">{#each a.contactsIn as c (c.id)}<li class="small">{c.channel === 'PHONE' ? '📞' : '💬'} <strong>{c.who}</strong> · {fmt(c.at)}{#if c.rfqId} · {c.rfqId}{/if}</li>{/each}</ul>
+				{/if}
+
+				<h3 class="mt">Buyers they contacted {#if a.contactsOutTotal > a.contactsOut.length}<span class="tiny muted">(latest {a.contactsOut.length} of {a.contactsOutTotal})</span>{/if}</h3>
+				{#if a.contactsOut.length === 0}<p class="muted small mb-0">None yet.</p>{:else}
+					<ul class="plain">{#each a.contactsOut as c (c.id)}<li class="small">{c.channel === 'PHONE' ? '📞' : '💬'} <strong>{c.who}</strong> · {fmt(c.at)}{#if c.rfqId} · {c.rfqId}{/if}</li>{/each}</ul>
+				{/if}
+
+				<h3 class="mt">Buyer reviews</h3>
+				{#if a.reviews.length === 0}<p class="muted small mb-0">No reviews yet.</p>{:else}
+					<ul class="plain">{#each a.reviews as r (r.id)}<li class="small"><strong>{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</strong> · {r.outcome === 'DEAL_DONE' ? 'Deal done' : 'No deal'} · {r.buyer} · {day(r.at)}{#if r.comment}<div>“{r.comment}”</div>{/if}</li>{/each}</ul>
+				{/if}
+
+				{#if a.tickets.length}
+					<h3 class="mt">Help desk requests</h3>
+					<ul class="plain">{#each a.tickets as t (t.id)}<li class="small"><a href="/admin?tab=helpdesk#{t.id}">{t.id}</a> · <span class="badge neutral">{t.status.toLowerCase().replace('_', ' ')}</span> · {day(t.createdAt)}<div class="muted">{t.message.slice(0, 120)}</div></li>{/each}</ul>
+				{/if}
 			</section>
 
 			<section class="card">
@@ -107,7 +184,8 @@
 		<!-- ============ RIGHT: documents + decision ============ -->
 		<div class="stack side">
 			<section class="card">
-				<h2>Documents</h2>
+				<h2>Submitted documents <span class="tiny muted">({s.documents.length})</span></h2>
+				{#if s.verification === 'DOCS_VERIFIED' || s.verification === 'GROUND_VERIFIED'}<p class="tiny muted">Verified — kept on file for the team.</p>{/if}
 				{#if s.documents.length === 0}
 					<p class="muted small mb-0">No documents uploaded.</p>
 				{:else}
@@ -187,6 +265,8 @@
 					</div>
 				{/if}
 			</section>
+
+			<AccountControl who="supplier" status={data.account.status} reason={data.account.reason} history={data.owner?.accountLog ?? []} />
 		</div>
 	</div>
 </main>
@@ -222,4 +302,11 @@
 	.tick input { margin-top: 3px; flex: none; }
 	.changes { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line-2); }
 	.center-text { text-align: center; margin-top: 6px; }
+	h3 { font-size: 0.9rem; }
+	.mini-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+	.mini-stats div { background: #f6f7fb; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; }
+	.mini-stats strong { font-size: 1.1rem; }
+	.mini-stats span { font-size: 0.75rem; color: var(--muted); }
+	@media (max-width: 560px) { .mini-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+	.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
 </style>

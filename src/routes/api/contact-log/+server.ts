@@ -1,8 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { canSeeBuyerContacts, canSeeSellerContacts } from '#lib/server/auth.ts';
 import { db, nextId, now } from '#lib/server/db.ts';
-import { findSellerById } from '#lib/server/sellers.ts';
-import { LISTED_STATUSES } from '#lib/taxonomy.ts';
+import { findSellerById, isListed } from '#lib/server/sellers.ts';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
@@ -22,11 +21,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const buyerUserId = typeof body.buyerUserId === 'string' ? body.buyerUserId : undefined;
 	const rfqId = typeof body.rfqId === 'string' ? body.rfqId : undefined;
 	const rfq = rfqId ? db.rfqs.find((r) => r.id === rfqId) : undefined;
-	if (rfqId && !rfq) error(404, 'Requirement not found');
+	if (rfqId && (!rfq || rfq.hidden)) error(404, 'Requirement not found');
 
 	if (sellerId) {
 		const seller = await findSellerById(sellerId);
-		if (!seller || !LISTED_STATUSES.includes(seller.verification)) error(404, 'Seller not found');
+		if (!seller || !isListed(seller)) error(404, 'Seller not found');
 		if (!canSeeSellerContacts(user)) error(403, 'Contacts are locked');
 	} else if (buyerUserId) {
 		if (!(await canSeeBuyerContacts(user))) error(403, 'Contacts are locked');

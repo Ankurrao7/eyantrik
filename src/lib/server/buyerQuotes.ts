@@ -1,6 +1,7 @@
 // Buyer-side quotation logic shared by the RFQ page and the quote detail page.
 
 import { error } from '@sveltejs/kit';
+import { isActive } from './accounts.ts';
 import { requireUser } from './auth.ts';
 import { db, now, sellerRating, type Quote, type Rfq } from './db.ts';
 import { scoreMatch } from './matching.ts';
@@ -31,7 +32,8 @@ export type QuoteSort = 'price' | 'distance' | 'lead' | 'rating';
 export async function quoteRows(rfq: Rfq, sort: QuoteSort = 'price') {
 	const all = db.quotes.filter((q) => q.rfqId === rfq.id && q.versions.length);
 	const sellerMap = await sellersById(all.map((q) => q.sellerId)); // one query for every quoting seller
-	const rows = all.filter((q) => sellerMap.has(q.sellerId)).map((q) => {
+	// Quotes from a supplier the admin team suspended/deactivated are not shown.
+	const rows = all.filter((q) => sellerMap.has(q.sellerId) && isActive(sellerMap.get(q.sellerId))).map((q) => {
 		const seller = sellerMap.get(q.sellerId)!;
 		const v = latest(q);
 		const m = scoreMatch(seller, rfq);

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { PublicSeller } from '../types.ts';
-	import { PROCESS_LABEL } from '../taxonomy.ts';
+	import { PROCESS_LABEL, TEAM_SIZE_LABEL } from '../taxonomy.ts';
+	import { SHOP_BY_ID } from '../processes.ts';
 	import VerificationBadge from './VerificationBadge.svelte';
 	import ContactButtons from './ContactButtons.svelte';
 
@@ -19,6 +20,7 @@
 	} = $props();
 
 	const machineCount = $derived(seller.machines.reduce((n, m) => n + m.count, 0));
+	const mainShop = $derived(seller.mainShop ? SHOP_BY_ID.get(seller.mainShop) : undefined);
 </script>
 
 <article class="card seller">
@@ -37,6 +39,9 @@
 		</div>
 	</div>
 
+	{#if mainShop}
+		<div class="small mt main-work"><span aria-hidden="true">{mainShop.emoji}</span> <strong>{mainShop.label}</strong>{#if seller.teamSize} <span class="muted">· {TEAM_SIZE_LABEL[seller.teamSize]}</span>{/if}</div>
+	{/if}
 	<div class="mt small">
 		{#each seller.processes as p}
 			<span class="chip" class:hit={highlight.includes(p)}>{PROCESS_LABEL[p] ?? p}</span>

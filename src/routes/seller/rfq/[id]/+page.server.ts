@@ -19,8 +19,8 @@ async function ctx(locals: App.Locals, url: URL, rfqId: string): Promise<{ user:
 	if (!seller) redirect(303, '/seller/onboarding');
 	const rfq = db.rfqs.find((r) => r.id === rfqId);
 	const quote = rfq ? db.quotes.find((q) => q.rfqId === rfq.id && q.sellerId === seller.id) : undefined;
-	// Closed requirements stay visible only to sellers who took part.
-	if (!rfq || (rfq.status !== 'OPEN' && !quote)) error(404, 'Requirement not found or closed');
+	// Closed requirements stay visible only to sellers who took part. Hidden = the buyer's account is on hold.
+	if (!rfq || ((rfq.status !== 'OPEN' || rfq.hidden) && !quote)) error(404, 'Requirement not found or closed');
 	return { user, seller, rfq, quote };
 }
 
@@ -28,6 +28,7 @@ async function ctx(locals: App.Locals, url: URL, rfqId: string): Promise<{ user:
 function quotingAllowed(rfq: (typeof db.rfqs)[number], quote: Quote | undefined): { ok: boolean; why?: string } {
 	if (quote?.status === 'ACCEPTED') return { ok: false, why: 'Your quote was accepted — the deal is done.' };
 	if (rfq.status !== 'OPEN') return { ok: false, why: 'This requirement is closed.' };
+	if (rfq.hidden) return { ok: false, why: 'This requirement is on hold by eYantrik.' };
 	if (quote?.status === 'NEGOTIATING') return { ok: true }; // negotiation may continue after the deadline
 	// OUTDATED (buyer edited the RFQ) falls through: re-quote while the new window is open.
 	if (!isQuotingOpen(rfq)) return { ok: false, why: 'The quotation window for this requirement has closed.' };

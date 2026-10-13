@@ -2,6 +2,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { canSeeBuyerContacts, requireUser } from '#lib/server/auth.ts';
 import { db, now, sellerRating, type Seller, type User } from '#lib/server/db.ts';
+import { notificationsFor } from '#lib/server/notify.ts';
 import { scoreMatch } from '#lib/server/matching.ts';
 import { findSellerById } from '#lib/server/sellers.ts';
 import { isQuotingOpen, latest, liveQuoteCount, markInterested, pendingCounter, sellerResponse } from '#lib/server/quotes.ts';
@@ -9,6 +10,7 @@ import { byNearness } from '#lib/geo.ts';
 import { landed } from '#lib/quote.ts';
 import { pickedProcesses } from '#lib/rfqFields.ts';
 import { normalizeShop, shopLabel } from '#lib/processes.ts';
+import { profileScore } from '#lib/profileScore.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 const TABS = ['matched', 'all', 'interested', 'quoted', 'negotiating', 'won', 'lost'] as const;
@@ -40,6 +42,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	const maxZone = Math.min(4, Math.max(0, Number.parseInt(url.searchParams.get('zone') ?? '4', 10) || 4));
 
 	const rows = db.rfqs
+		.filter((rfq) => !rfq.hidden) // buyer's account suspended/deactivated by the admin team
 		.map((rfq) => {
 			const m = scoreMatch(seller, rfq);
 			const quote = db.quotes.find((q) => q.rfqId === rfq.id && q.sellerId === seller.id);
@@ -92,13 +95,14 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	const won = mine.filter((q) => q.status === 'ACCEPTED').length;
 	const lost = mine.filter((q) => q.status === 'DECLINED' || q.status === 'NOT_SELECTED').length;
 
-	const updates = db.notifications
-		.filter((n) => n.userId === user.id)
+	const updates = notificationsFor(user.id)
 		.slice(0, 5)
 		.map((n) => ({ id: n.id, title: n.title, body: n.body, at: n.at, read: n.read }));
 
+	const score = profileScore(seller);
 	return {
 		updates,
+		profile: { percent: score.percent, missing: score.missing.slice(0, 3), missingCount: score.missing.length },
 		seller: {
 			id: seller.id,
 			slug: seller.slug,
@@ -137,7 +141,7 @@ export const actions: Actions = {
 		const rfqId = data.get('rfqId')?.toString();
 		const reason = data.get('reason')?.toString() ?? '';
 		const rfq = db.rfqs.find((r) => r.id === rfqId);
-		if (!rfq) return fail(404, { error: 'Requirement not found.' });
+		if (!rfq || rfq.hidden) return fail(404, { error: 'Requirement not found.' });
 		if (!NOT_FOR_US_REASONS.includes(reason)) return fail(400, { error: 'Pick a reason — it helps us send you better leads.' });
 		if (db.quotes.some((q) => q.rfqId === rfq.id && q.sellerId === seller.id && q.status !== 'WITHDRAWN'))
 			return fail(409, { error: 'You already quoted on this — withdraw the quote instead.' });

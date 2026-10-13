@@ -2,7 +2,8 @@
 	import { page } from '$app/state';
 	import ContactButtons from '#lib/components/ContactButtons.svelte';
 	import VerificationBadge from '#lib/components/VerificationBadge.svelte';
-	import { INDUSTRY_LABEL, MATERIAL_CATEGORY_LABEL, PROCESS_LABEL } from '#lib/taxonomy.ts';
+	import { INDUSTRY_LABEL, MATERIAL_CATEGORY_LABEL, ORDER_TYPE_LABEL, PART_SIZE_LABEL, PROCESS_LABEL, TEAM_SIZE_LABEL, TOLERANCE_LABEL } from '#lib/taxonomy.ts';
+	import { SHOP_BY_ID } from '#lib/processes.ts';
 
 	let { data } = $props();
 	const s = $derived(data.seller);
@@ -23,6 +24,17 @@
 		}).replace(/</g, '\\u003c')
 	);
 	const processNames = $derived(s.processes.map((p) => PROCESS_LABEL[p] ?? p));
+	const mainShop = $derived(s.mainShop ? SHOP_BY_ID.get(s.mainShop) : undefined);
+	// "At a glance": the fixed attributes, so buyers can compare suppliers on the same terms.
+	const glance = $derived(
+		[
+			mainShop && { k: 'Main work', v: `${mainShop.emoji} ${mainShop.label}` },
+			s.orderTypes?.length && { k: 'Order sizes', v: s.orderTypes.map((o) => (ORDER_TYPE_LABEL[o] ?? o).replace(/\s*\(.*\)$/, '')).join(' · ') },
+			s.teamSize && { k: 'Team', v: TEAM_SIZE_LABEL[s.teamSize] },
+			s.maxPartSize && { k: 'Largest part', v: PART_SIZE_LABEL[s.maxPartSize] },
+			s.bestTolerance && { k: 'Best tolerance', v: TOLERANCE_LABEL[s.bestTolerance] }
+		].filter((x): x is { k: string; v: string } => !!x)
+	);
 </script>
 
 <svelte:head>
@@ -51,6 +63,11 @@
 			</div>
 		</div>
 		{#if s.rating}<p class="mt mb-0">★ <strong>{s.rating}</strong> <span class="muted small">from {s.reviewCount} buyer review{s.reviewCount === 1 ? '' : 's'}</span></p>{/if}
+		{#if glance.length}
+			<dl class="glance mt">
+				{#each glance as g (g.k)}<div><dt>{g.k}</dt><dd>{g.v}</dd></div>{/each}
+			</dl>
+		{/if}
 		<p class="mt">{s.about}</p>
 		{#if s.groundInspectedOn}
 			<p class="small muted mb-0">✓ Factory visited by the eYantrik team on {new Date(s.groundInspectedOn).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}. Listed machines confirmed on site.</p>
@@ -139,13 +156,20 @@
 		</div>
 	{/if}
 
-	<div class="card dark row between gap">
-		<span>Want eYantrik to manage this order for you?</span>
-		<a class="btn ok sm" href="/help">Need assistance</a>
-	</div>
+	{#if !data.isOwner && data.lockReason !== 'role'}
+		<!-- buyer / visitor offer only: sellers never see buying actions -->
+		<div class="card dark row between gap">
+			<span>Want eYantrik to manage this order for you?</span>
+			<a class="btn ok sm" href="/help">Need assistance</a>
+		</div>
+	{/if}
 </main>
 
 <style>
 	.review { border-top: 1px solid var(--line); padding: 10px 0; }
+	.glance { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; margin-bottom: 0; }
+	.glance div { background: #f6f7fb; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+	.glance dt { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+	.glance dd { margin: 2px 0 0; font-size: 0.9rem; font-weight: 600; }
 	.review:first-of-type { border-top: none; }
 </style>

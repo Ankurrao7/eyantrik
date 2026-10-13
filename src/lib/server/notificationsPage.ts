@@ -3,13 +3,14 @@
 import { redirect } from '@sveltejs/kit';
 import { requireUser, safeRedirect } from './auth.ts';
 import { db } from './db.ts';
+import { notificationsFor } from './notify.ts';
 
 type Side = 'BUYER' | 'SELLER';
 const inbox = (role: Side) => `/${role.toLowerCase()}/notifications`;
 
 export function notificationsLoad(role: Side, locals: App.Locals, url: URL) {
 	const user = requireUser(locals, url, [role]);
-	return { role, items: db.notifications.filter((n) => n.userId === user.id).slice(0, 100) };
+	return { role, items: notificationsFor(user.id).slice(0, 100) };
 }
 
 export function notificationsActions(role: Side) {

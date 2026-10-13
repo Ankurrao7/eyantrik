@@ -3,8 +3,8 @@ import { sellerRating } from '#lib/server/db.ts';
 import type { Filter } from 'mongodb';
 import type { Seller } from '#lib/server/db.ts';
 import { toPublicSeller } from '#lib/server/matching.ts';
-import { listSellers, sellers } from '#lib/server/sellers.ts';
-import { INDUSTRY_LABEL, LISTED_STATUSES, MATERIAL_CATEGORY_LABEL, PROCESS_LABEL } from '#lib/taxonomy.ts';
+import { LISTED_FILTER, listSellers, sellers } from '#lib/server/sellers.ts';
+import { INDUSTRY_LABEL, MATERIAL_CATEGORY_LABEL, PROCESS_LABEL } from '#lib/taxonomy.ts';
 import { isProcessId, isShopId, normalizeProcesses, normalizeShop, processById, processesOfShop, SHOPS } from '#lib/processes.ts';
 import type { PageServerLoad } from './$types';
 
@@ -19,14 +19,14 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 
 	// The dropdown filters run inside MongoDB; only the free-text search runs here
 	// (it also matches labels like "CNC machining", which aren't stored in the database).
-	const listed: Filter<Seller> = { verification: { $in: LISTED_STATUSES } };
+	const listed: Filter<Seller> = { ...LISTED_FILTER };
 	const filter: Filter<Seller> = { ...listed };
 	// `process` may be a whole type of work (shop), one process, or an old id from an earlier link.
 	const shopId = isShopId(process) ? process : normalizeShop(process);
 	const wanted = shopId ? processesOfShop(shopId) : isProcessId(process) ? [process] : normalizeProcesses([process]);
 	if (process && wanted.length) filter.processes = { $in: wanted }; // array field: any of these
 	if (state) filter.state = state;
-	if (groundOnly) filter.verification = 'GROUND_VERIFIED';
+	if (groundOnly) filter.verification = 'GROUND_VERIFIED'; // still active-only (accountStatus stays in the filter)
 	const [found, states] = await Promise.all([listSellers(filter), sellers.distinct('state', listed)]);
 	const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
 

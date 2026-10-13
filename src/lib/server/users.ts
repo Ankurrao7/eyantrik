@@ -41,6 +41,9 @@ export async function usersById(ids: (string | undefined)[]): Promise<Map<string
 	return new Map(list.map((u) => [u.id, u]));
 }
 
+/** Every account of one role, newest first (admin console lists). */
+export const listUsersByRole = (role: Role) => users.find<User>({ role }, { ...noMongoId, sort: { createdAt: -1 } }).toArray();
+
 export async function countUsers(filter: Partial<Pick<User, 'role'>> & { createdAfter?: string } = {}) {
 	const { createdAfter, ...rest } = filter;
 	return users.countDocuments(createdAfter ? { ...rest, createdAt: { $gt: createdAfter } } : rest);

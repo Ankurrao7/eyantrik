@@ -2,7 +2,7 @@
 
 > Single source of truth for **what we're building, why, and how it flows**.
 > Update this file whenever a decision is made, a feature ships, or the flow changes.
-> Last updated: **2026-10-07** (quotation & negotiation release)
+> Last updated: **2026-10-13** (positioning: a deal platform, not a lead directory)
 
 ---
 
@@ -10,9 +10,41 @@
 
 **eYantrik** is a B2B manufacturing marketplace for India: buyers (OEMs, auto-component makers, startups) find **verified** job shops / manufacturers and deal with them directly. Where buyers want one accountable partner, the **eYantrik help desk** steps in as seller (make in-house / broker) or as buyer (source for a seller).
 
-**Phase 1 goal (now): grow users & make them dependent on the platform** — everything free, easy features, friendly UI. No profit motive yet. Monetisation (subscriptions, featured listings, lead credits) comes in Phase 2 once there is traffic.
+**Phase 1 goal (now): grow users & make them dependent on the platform** — everything free, easy features, friendly UI. No profit motive yet. Monetisation comes in Phase 2 once there is traffic — from **deals and tools, never from selling leads** (see §1.1).
 
-**North-star metrics (Phase 1):** sign-ups (buyers / sellers), verified sellers, RFQs posted, quotes submitted, contacts made, deals reported, repeat buyers.
+**North-star metrics (Phase 1):** sign-ups (buyers / sellers), verified sellers, RFQs posted, quotes submitted, **deals awarded on the platform**, **orders delivered & rated**, repeat buyers. (Contacts made is no longer a goal in itself — see §1.1.)
+
+### 1.1 Positioning — we are NOT IndiaMART (decision 2026-10-13)
+
+**What we refuse to become:** a lead directory (IndiaMART model) — sellers pay for listings and leads, one enquiry is broadcast to many sellers, the buyer gets flooded with calls, the deal happens off the platform and the platform never learns whether the work was good.
+
+**What we are:** the place where a custom-part deal **happens and is proven** — structured requirement → a few well-matched, verified shops → comparable quotes → negotiation → award → tracked order → rating from real delivery. Our moat is **trust data from delivered orders**, which a directory can never have.
+
+**Already different (protect these):** made-to-drawing parts, not catalogue products · structured RFQ (tolerances, drawings, NDA gate) · landed-cost quote comparison + "things to consider" · counter-offers & award · ground (factory-visit) verification · concierge managed orders.
+
+**Where the current build drifts toward a directory (to fix):**
+
+| Current logic | Why it is directory-like |
+|---|---|
+| Phone/WhatsApp unlocked after the buyer's 1st RFQ; buyer's phone visible to every verified matched seller | Conversation leaves the platform at once; buyer gets spam calls |
+| Calls logged as "proof of lead value for Phase 2 pricing" | Builds toward selling leads |
+| Planned revenue: subscriptions, featured listings, lead credits | IndiaMART's exact model |
+| Each RFQ is sent to **all** matching sellers | Broadcast instead of curation |
+| Self-managed deals are not tracked | Platform loses the order and learns nothing |
+| Public directory + SEO pages as the main front door | Directory as the product |
+
+**The new method (adopted 2026-10-13 — build order to be decided, nothing below is built yet):**
+
+1. **Keep the deal on the platform.** Phone numbers are shared only once the buyer **shortlists or awards** a seller; before that, buyer and seller talk through simple on-platform messages. *Reverses the 2026-10-07 rule "buyer sees seller contacts after posting ≥1 requirement" (§3) once built.*
+2. **Curate, don't broadcast.** Each RFQ is offered to the **top 5–8 matched sellers** (nearest-first + fit + track record); more are invited only if quotes don't come in. Buyers get fewer, better quotes; sellers get a real win rate.
+3. **Rate sellers on delivered work, not just a badge.** Every awarded deal gets a light order step — PO upload, milestones, delivery confirmation, rating — not only concierge jobs. Track on-time delivery, rejection rate, response time and quote accuracy; feed them into matching and the public profile.
+4. **Earn from transactions and tools, never from leads.** Phase 2 options: fee on managed orders, payment protection / milestone payments (late MSME payments are a real pain), paid tools for job shops. Sellers never pay to see a lead.
+5. **Seller side = a daily tool.** Quote management, cost estimator, capacity calendar, job tracking — a reason to open eYantrik even with no new leads.
+6. **Engineering depth.** Seller capability fields (tonnage, part size, sheet thickness, certifications — §4 "Next"), later manufacturability feedback on drawings. Buyers choose us because we understand their part, not because we list the most suppliers.
+
+The public directory stays as **acquisition (search traffic)**, not as the product.
+
+**Suggested order:** 1 and 2 first (small code changes that change what the platform is), then 3 (builds on them), then 5 and 6; 4 is Phase 2. Final order to be decided with the user.
 
 ---
 
@@ -21,9 +53,9 @@
 | Role | Sees | Never sees |
 |---|---|---|
 | **Visitor** | Home, supplier directory (contacts blurred), Post Requirement form, Help desk | Contacts, leads |
-| **Buyer** | Find Suppliers, Post Requirement, Buyer Dashboard, Help desk | Seller lead feed |
-| **Seller** | Lead Feed / Seller Dashboard, Help desk | Post Requirement, buyer tools |
-| **Admin** (eYantrik team) | Admin console, supplier directory | — |
+| **Buyer** | Find Suppliers, Post Requirement, Buyer Dashboard, Help desk (sourcing help) | Seller lead feed, admin console |
+| **Seller** | Lead Feed / Seller Dashboard, Help desk (find buyers / sub-contractor) | Post Requirement, buyer tools ("Need assistance", "manage this order"), admin console |
+| **Admin** (eYantrik team) | **Admin console only**: work queue, Suppliers, Buyers, Requirements, Help desk tickets, concierge, contact log — every detail unblurred | Buyer/seller tools (Need assistance, Post requirement, Help desk form), the public directory |
 
 - **Separate buyer and seller accounts** (separate verification, reputation and data). One mobile/email may own **one buyer account AND one seller account**, never two of the same role (decision 2026-10-09; unique indexes `{role, phone}`, `{role, email}`). Buyer and seller areas never mix.
 
@@ -42,7 +74,12 @@
 - **Lockout:** 5 wrong passwords per portal + ID → 15-minute lock. Unknown IDs get the same message and timing as wrong passwords.
 - **Sessions:** one cookie per role, so a buyer tab, a seller tab and an admin tab work side by side in one browser. New random session id on every login (no fixation); server-side expiry; a session can never cross roles (session doc stores `role`).
 - **Which identity a request uses** (`identityFor` in auth.ts) — the URL decides: `/buyer…` & `/rfq/new` → buyer · `/seller…` → seller · `/admin…` → admin · `/api/…?as=BUYER|SELLER` → that side · shared pages (home, directory, help) → side used last (`ey_active` cookie). `locals.user` = this request's identity; `locals.sessions` = everyone signed in.
-- **Per-tab side (2026-10-12):** cookies are shared by all tabs, so shared pages (home, directory, help) can't tell tabs apart on the server. Each tab remembers its own side in `sessionStorage` (`src/lib/tabSide.svelte.ts`); the header, bell, pop-ups, logout and homepage CTA use that tab's side (`+layout.svelte` → `me`). Server sends every signed-in side (`data.sides`). A brand-new tab starts on the side used last and offers "Switch to …". Verified in a real multi-tab Edge session (Playwright, 10/10).
+- **One workspace per tab (decision 2026-10-12, replaces "per-tab side").** A browser can hold an admin, a buyer and a seller login at once, so every TAB works in ONE lane — ADMIN, BUYER or SELLER — remembered in `sessionStorage` (`src/lib/tabSide.svelte.ts`) and told to the server through the non-secret `ey_lane` cookie (written on navigation, focus and before reload). Rules:
+  - Role areas and login portals set the lane (`/admin…` → ADMIN, `/seller…` & `/login/seller` → SELLER, `/buyer…`, `/rfq/new` & `/login/buyer` → BUYER). A brand-new tab takes the area it opened, else the lane last used.
+  - Shared pages (home, directory, help) show **only the tab's own account** — never the other one. An **ADMIN tab sees them as a visitor** with a "🛡 Admin tab — Back to admin console" bar; the logo in an admin tab goes to `/admin`.
+  - Opening **another role's area** from a tab (e.g. an admin tab typing `/seller/profile`) is stopped with **"This tab is your admin console — Stay / Switch this tab"**. Only an explicit switch moves a tab: that button, the header's "Switch to buyer/seller", or logging in through a portal.
+  - Server side (`identityFor` + `visibleSessions` in auth.ts): `/admin…` pages never receive buyer/seller login data; on shared pages an ADMIN lane acts as nobody and a BUYER/SELLER lane only as itself (`locals.sessions` filtered). The admin login page and an expired admin session show no buyer/seller header.
+  - Verified in real Edge with one browser profile and three tabs (Playwright, 20/20).
 - **Signed in as both:** header shows "Switch to buyer/seller"; Log out signs out only the current side; signing up for the other side pre-fills name/company/phone/email; buyer portal tells a seller-only person "no buyer account yet" (only after the right password).
 - **Notifications** are per side: `/buyer/notifications`, `/seller/notifications` (old `/notifications` forwards); pop-ups poll `/api/notifications?as=<role>`.
 - **Phone fields** use `PhoneInput.svelte` (🇮🇳 +91 dropdown; only India for now). Valid = 10 digits starting 6/7/8/9 (70…, 71… included); server re-checks with `phoneFromForm()` / `PHONE_ERROR` in auth.ts.
@@ -53,6 +90,11 @@
   - Every protected load/action also calls `requireUser()` (defense in depth) → 403 on wrong role.
   - **Never remove the `/buyer` and `/seller` lines in `rolesFor()`**, and never log the `user` object (it contains the password hash) — log `user?.id` / `user?.role` only.
 - Admin session works only inside `/admin`; admin sees no bell/pop-ups (notifications are for buyers & sellers).
+- **Admin works only inside the console (decision 2026-10-12).** The admin cookie is never sent to public pages, so the public directory would show the admin as a *visitor* (blurred contacts, "Need assistance") — that's why the admin menu/footer no longer link to `/sellers` or `/help`. Everything the admin needs is in the console instead:
+  - **Suppliers tab** (`/admin?tab=suppliers&status=…`): every company at every stage (awaiting review / docs verified / ground verified / sent back / suspended-deactivated), state filter + search (name, person, phone, GSTIN), full phone / WhatsApp / email, docs count, quotes / won, rating.
+  - **Supplier file** (`/admin/review/seller/[id]`, works for every stage, not only pending): contact with Call / WhatsApp / Email, company details, login account, **all submitted documents kept on file after verification**, automatic checks, verification decision, factory visit, history, platform activity (matching open leads, interested, quotes sent + status, orders won, buyers who contacted them and whom they contacted, reviews, help requests), account control.
+  - **Buyers tab** + **buyer file** (`/admin/buyers/[id]`): full contact, requirements with quotes / lowest / awarded, contacts both ways, feedback given, help requests, managed orders, account control.
+- **Admin never edits a user's details** — data entry stays in the user's hands. The admin can only **Suspend** (temporary hold) or **Deactivate** (close), and **Reactivate** (`src/lib/server/accounts.ts`, `AccountControl.svelte`). A reason is required and is shown to the person at login. Effect: login refused, sessions deleted at once (only that role's account); a suspended supplier disappears from directory, profile page (404), matching, lead alerts, contact log and buyers' quote lists; a suspended buyer's requirements are hidden from seller feeds (`rfq.hidden`, also their lead notifications). Stored as `accountStatus` / `accountStatusReason` / `accountLog` on users and `accountStatus` on sellers (missing = active, so no migration). Listing rule lives in `LISTED_FILTER` / `isListed()` in `sellers.ts`.
 - Team-added sellers: admin sets the owner's **login email + temporary password** when adding the factory.
 - Phase 2: OTP / 2FA, password reset by email/SMS, "change temporary password on first login", HTTPS-only (`secure`) cookies.
 
@@ -80,11 +122,26 @@ VISITOR ── browse directory ──┐
 ```
 
 ### Contact & visibility rules
+> Current build. Will change under §1.1 method #1 (contacts only after shortlist / award, on-platform messages before that).
 - Buyer sees seller phone/WhatsApp **only after posting ≥1 requirement**.
 - Seller sees buyer identity/phone **only once documents are verified**.
 - Unverified (DOCS_SUBMITTED) sellers are hidden from the directory; they see lead *counts* as motivation.
 - If RFQ has **NDA required**, drawing file names are hidden until a verified seller clicks *Accept NDA*.
-- Every call/WhatsApp tap is logged (`/api/contact-log`) — proof of lead value for Phase 2 pricing.
+- Every call/WhatsApp tap is logged (`/api/contact-log`) — used to see which matches lead to deals (no longer meant for lead pricing, §1.1).
+
+### Home page — one address, three versions (decision 2026-10-12)
+Decided per tab by `tabSide` (`src/routes/+page.svelte`, data from `+page.server.ts`):
+- **Visitor:** public landing page for both audiences (SEO) — search, quote-comparison picture, how it works, suppliers, browse by type of work, "For buyers / For manufacturers".
+- **Buyer:** the same buying page + a personal strip ("Welcome back · N open requirements · N new quotes waiting → My requirements"); no seller sign-up prompts.
+- **Seller:** own hero ("Fill your machines with real orders near you") with Open lead feed + profile card (ring + top missing items), status strip (new matching leads, quotes sent, orders won, verification), demand strip (open requirements, buyers, cities), seller steps & benefits, **open requirements by type of work** (own main work on top, links to the lead feed), seller help band. **No** supplier search, quote picture, directory cards or "Post a requirement". Not yet registered → "Register your factory" + 3 steps.
+
+### Seller profile: fixed attributes + completeness ring (decision 2026-10-12)
+- **Fixed attributes** (same ids as the RFQ form, lists in `taxonomy.ts`), so suppliers are grouped on fixed attributes, not free text. **Mandatory** at registration, team Add seller and profile edits: *main type of work* (one shop, and at least one ticked process must be inside it), processes, material families, **industries** (now required), **order sizes** (`ORDER_TYPES`, same as RFQ `orderType`), **team size**, machines, description. Optional: largest part (`PART_SIZES`), best tolerance (`TOLERANCES`), certifications (fixed `CERTIFICATIONS` choices + "other"). Validation in `parseCapabilities()` (`sellerForm.ts`). Older listings have none of these yet — the ring asks them to fill them in (no migration).
+- **Completeness score** (`src/lib/profileScore.ts`, weights sum to 100): company & contact 10 · documents verified 15 · factory visit 10 · main work & processes 10 · order sizes & team size 10 · materials & industries 10 · machines 10 · 3+ shop-floor photos 10 · description ≥120 chars 5 · certifications 5 · largest part & tolerance 5.
+- **Ring** (`ProfileRing.svelte`, red < 50 % · amber < 80 % · green ≥ 80 %) around the seller's avatar in the header (links to My profile), on the seller dashboard nudge card, the seller home, My profile, and the admin supplier list + file.
+- **"Complete it to meet more leads" is real:** matching adds up to +3 for completeness and +2 when the RFQ's order size is one the seller takes (`scoreMatch`) — never more than process fit or nearness.
+- **My profile** (`/seller/profile`): checklist (each item links to its field) + edit form. Company name, GSTIN, factory address and login mobile are **locked** (verified identity — changes go through the help desk and are verified again). Seller can add shop-floor photos (max 10). Saves are logged in the history ("Profile updated by seller"). Rejected sellers use `/seller/onboarding` instead.
+- Buyers see the fixed attributes as **"At a glance"** on the public profile (main work, order sizes, team, largest part, best tolerance) and main work + team on supplier cards.
 
 ### Seller verification ladder
 `DOCS_SUBMITTED` → (admin approves docs) → `DOCS_VERIFIED` (listed, receives leads) → (field inspection recorded, "machines match" confirmed) → `GROUND_VERIFIED`. `REJECTED` with reason → seller can resubmit.
@@ -204,6 +261,7 @@ Bell with unread count in the header + `/notifications` (click marks read & open
 ---
 
 ## 7. Backlog (ideas to increase platform dependence)
+> The six-step method in §1.1 comes first; items below support it.
 - Quote templates / rate card · saved suppliers · one-click re-order · RFQ duplicate
 - Order tracking after award (PO upload, milestones, dispatch photos, delivery confirmation → rating prompt)
 - Quote PDF / process-sheet attachments (needs real file storage)
@@ -255,6 +313,10 @@ Bell with unread count in the header + `/notifications` (click marks read & open
 ---
 
 ## 9. Changelog
+- **2026-10-13** — Positioning decision (§1.1): eYantrik is a deal platform, not a lead directory like IndiaMART. Recorded where the current build drifts toward a directory and the new six-step method (contacts only after shortlist/award, curated top 5–8 sellers per RFQ, ratings from delivered orders, revenue from deals and tools never leads, daily seller tools, engineering depth). North-star metrics updated. Nothing built yet; build order to be decided.
+- **2026-10-12** — Fix: the admin console could reach a seller's profile (e.g. Akash's completeness ring on the admin login page or after clicking the logo), because shared pages and the admin login page fell back to whichever login the browser used last. Now **one workspace per tab** (admin / buyer / seller): shared pages show only the tab's own account, an admin tab sees the public site as a visitor, crossing into another role's area asks "Switch this tab?", and the server never gives admin pages buyer/seller login data. Verified in a real multi-tab browser 20/20.
+- **2026-10-12** — Separate home pages for visitor / buyer / seller (buyer strip with open requirements & waiting quotes; seller hero, lead stats, seller steps & benefits, open requirements by type of work, no buyer parts). Seller **profile completeness ring** (LinkedIn-style) on the header avatar, dashboard, home, My profile and admin; new **My profile** page (`/seller/profile`) with checklist and edit form (verified identity locked, add photos). **Fixed mandatory attributes**: main type of work, order sizes, team size, industries (+ optional largest part, tolerance, fixed certifications). Matching rewards complete profiles and matching order sizes. Verified 29/29 on a throwaway test database.
+- **2026-10-12** — Strict role screens + full admin visibility: admin menu/footer show only console links (no public directory, no help desk, no "Need assistance"); sellers no longer see buyer offers ("Need assistance" on supplier profiles, buyer help band on home → seller version, "Ask the help desk" in directory). New admin **Suppliers** and **Buyers** tabs, supplier file for every stage with full contacts, documents kept after verification and platform activity, new buyer file. **Suspend / Deactivate / Reactivate** for buyers and suppliers (reason required, login blocked, signed out, hidden from the other side; admin can't edit details). Fixed Overview "Needs attention" cards that pointed to a missing tab. Verified 42/42 on a throwaway test database.
 - **2026-10-12** — Admin console: unified **Work queue** (document reviews, factory visits, help requests, new buyers to call, requirements without quotes) + **seller review screen** (automatic checks, documents viewed in place, required checklist, send back with reasons, factory visit, history). Uploaded files are now stored (`files.ts`, `uploads/`): seller documents, drawings, quotation files. Verified 29/29.
 - **2026-10-12** — Fix: a seller tab no longer turns into a buyer on shared pages after a buyer logs in in another tab — each tab remembers its own side (sessionStorage); header/bell/pop-ups/logout/homepage button follow it.
 - **2026-10-12** — New process list (Option B): 13 shops → 33 groups → 143 processes in `processes.ts`, plain explanations + shop-floor search words; "What kind of work?" cards and a process picker on the requirement form; collapsible picker for sellers; directory filter by shop or process (+ keyword finds VMC, wire cut…); homepage "Browse by type of work"; sitemap per shop/process; fair scoring for shop-only requirements; old ids converted (`db:migrate`). Research saved in `docs/research/`. Tested 22/22.

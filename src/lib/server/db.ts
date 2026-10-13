@@ -18,7 +18,22 @@ export interface User {
 	companyName: string;
 	role: Role;
 	sellerId?: string;
+	/** missing = active. Suspended/deactivated accounts can't sign in (set by the admin team, see accounts.ts). */
+	accountStatus?: AccountStatus;
+	accountStatusReason?: string;
+	/** suspend / deactivate / reactivate history (admin only) */
+	accountLog?: AccountEvent[];
 	createdAt: string;
+}
+
+export type AccountStatus = 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED';
+
+/** One suspend / deactivate / reactivate decision by the admin team. */
+export interface AccountEvent {
+	at: string;
+	by: string;
+	status: AccountStatus;
+	reason?: string;
 }
 
 export interface Machine {
@@ -40,7 +55,7 @@ export interface VerificationEvent {
 	at: string;
 	/** "Seller" or the admin's name */
 	by: string;
-	action: 'SUBMITTED' | 'RESUBMITTED' | 'ADDED_BY_TEAM' | 'DOCS_VERIFIED' | 'CHANGES_REQUESTED' | 'GROUND_VERIFIED' | 'NOTE';
+	action: 'SUBMITTED' | 'RESUBMITTED' | 'ADDED_BY_TEAM' | 'DOCS_VERIFIED' | 'CHANGES_REQUESTED' | 'GROUND_VERIFIED' | 'NOTE' | 'SUSPENDED' | 'DEACTIVATED' | 'REACTIVATED' | 'PROFILE_UPDATED';
 	note?: string;
 }
 
@@ -67,7 +82,22 @@ export interface Seller {
 	industries: string[];
 	machines: Machine[];
 	certifications: string[];
+	// ---- Fixed attributes (2026-10-12; taxonomy.ts lists). Optional in the type because older
+	// listings don't have them yet — the profile-completeness ring asks the seller to fill them in.
+	/** main type of work = one shop id (processes.ts) */
+	mainShop?: string;
+	/** order sizes accepted = ORDER_TYPES ids, same as the RFQ's orderType */
+	orderTypes?: string[];
+	/** TEAM_SIZES id */
+	teamSize?: string;
+	/** PART_SIZES id */
+	maxPartSize?: string;
+	/** TOLERANCES id */
+	bestTolerance?: string;
 	verification: VerificationStatus;
+	/** missing = active. Suspended/deactivated listings are hidden from buyers, matching and leads. */
+	accountStatus?: AccountStatus;
+	accountStatusReason?: string;
 	onboardedBy: 'SELF' | 'TEAM';
 	documents: SellerDocument[];
 	groundInspection?: { inspector: string; date: string; notes: string };
@@ -116,6 +146,8 @@ export interface Rfq {
 	salesNote?: string;
 	salesBy?: string;
 	editedAt?: string;
+	/** the buyer's account is suspended/deactivated: hidden from sellers until it is reactivated */
+	hidden?: boolean;
 	createdAt: string;
 	updatedAt: string;
 }

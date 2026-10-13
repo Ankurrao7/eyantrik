@@ -1,6 +1,7 @@
 // src/routes/buyer/dashboard/+page.server.ts
 import { requireUser } from '#lib/server/auth.ts';
 import { db } from '#lib/server/db.ts';
+import { notificationsFor } from '#lib/server/notify.ts';
 import { listSellers } from '#lib/server/sellers.ts';
 import { interestedCount, isLive, isQuotingOpen, latest } from '#lib/server/quotes.ts';
 import { landed } from '#lib/quote.ts';
@@ -67,8 +68,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			};
 		});
 
-	const updates = db.notifications
-		.filter((n) => n.userId === user.id)
+	const updates = notificationsFor(user.id)
 		.slice(0, 5)
 		.map((n) => ({ id: n.id, title: n.title, body: n.body, at: n.at, read: n.read }));
 

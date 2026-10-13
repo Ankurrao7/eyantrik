@@ -16,6 +16,12 @@ export interface PublicSeller {
 	industries: string[];
 	machines: { name: string; count: number }[];
 	certifications: string[];
+	/** fixed attributes (missing on older listings) — see taxonomy.ts */
+	mainShop?: string;
+	orderTypes?: string[];
+	teamSize?: string;
+	maxPartSize?: string;
+	bestTolerance?: string;
 	verification: VerificationStatus;
 	groundInspectedOn?: string;
 	rating: number | null;

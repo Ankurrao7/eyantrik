@@ -5,6 +5,7 @@
 import { byNearness, coordsFor, distanceKm, nearZone } from '../geo.ts';
 import { effectiveProcesses, pickedProcesses } from '../rfqFields.ts';
 import { normalizeProcesses } from '../processes.ts';
+import { profileScore } from '../profileScore.ts';
 import type { PublicSeller } from '../types.ts';
 import { sellerRating, type Rfq, type Seller, type User } from './db.ts';
 import { listedSellers } from './sellers.ts';
@@ -24,6 +25,11 @@ export function toPublicSeller(s: Seller, showContact: boolean): PublicSeller {
 		industries: s.industries,
 		machines: s.machines,
 		certifications: s.certifications,
+		mainShop: s.mainShop,
+		orderTypes: s.orderTypes,
+		teamSize: s.teamSize,
+		maxPartSize: s.maxPartSize,
+		bestTolerance: s.bestTolerance,
 		verification: s.verification,
 		groundInspectedOn: s.groundInspection?.date,
 		rating: sellerRating(s),
@@ -54,7 +60,9 @@ export interface Match {
 
 /**
  * Relevance score. Process overlap is mandatory (0 = not a match); then nearness, material family,
- * industry experience, verification depth and buyer rating add to it.
+ * industry experience, order size, verification depth, buyer rating and profile completeness add to it.
+ * (Profile completeness: up to +3, so a complete profile is the "meet more leads" reward — it never
+ * outweighs being the right process or being nearby.)
  */
 export function scoreMatch(seller: Seller, rfq: Rfq): Match {
 	const picked = pickedProcesses(rfq.values);
@@ -72,7 +80,9 @@ export function scoreMatch(seller: Seller, rfq: Rfq): Match {
 	if (distance !== null) score += Math.max(0, 8 - distance / 100); // 0 km → +8, 800 km+ → 0
 	if (materialMatch) score += 4;
 	if (seller.industries.includes(String(rfq.values.industry ?? ''))) score += 2;
+	if (seller.orderTypes?.includes(String(rfq.values.orderType ?? ''))) score += 2;
 	if (seller.verification === 'GROUND_VERIFIED') score += 2;
+	score += (profileScore(seller).percent / 100) * 3;
 	score += sellerRating(seller) ?? 0;
 	return { seller, score, covers, distanceKm: distance, zone, materialMatch };
 }

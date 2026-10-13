@@ -1,12 +1,21 @@
-<!-- src/routes/+page.svelte — landing page -->
+<!-- src/routes/+page.svelte — home page. One address, three versions (decided per tab by tabSide):
+     • visitor — public landing page for both audiences (SEO)
+     • buyer   — the buying page + a "your requirements" strip; no seller sign-up prompts
+     • seller  — leads, profile-completeness ring, seller steps & benefits, buyer demand by type of work;
+                 no supplier search, quote-comparison picture, directory or "post a requirement" -->
 <script lang="ts">
 	import Icon, { type IconName } from '#lib/components/Icon.svelte';
 	import SellerCard from '#lib/components/SellerCard.svelte';
-	import { tabSide } from '#lib/tabSide.svelte.ts';
+	import ProfileRing from '#lib/components/ProfileRing.svelte';
+	import VerificationBadge from '#lib/components/VerificationBadge.svelte';
+	import type { VerificationStatus } from '#lib/taxonomy.ts';
+	import { tabLane } from '#lib/tabSide.svelte.ts';
 
 	let { data } = $props();
-	// The call-to-action follows THIS tab's side (a seller tab sees "Open your lead feed").
-	const side = $derived(tabSide.current && data.sides[tabSide.current] ? tabSide.current : data.role);
+	// The page follows THIS tab's workspace (tabSide.svelte.ts): a seller tab gets the seller home, a buyer
+	// tab the buyer home, an admin tab the public page as a visitor; a tab without one, the server's guess.
+	const lane = $derived(tabLane.current ?? data.lane);
+	const side = $derived(lane === 'ADMIN' ? 'ADMIN' : lane ? (data.sides[lane] ? lane : null) : data.role);
 	const sideHasProfile = $derived(side === 'SELLER' ? !!data.sides.SELLER?.hasSellerProfile : data.hasSellerProfile);
 
 	const guest = $derived(!side);
@@ -29,6 +38,28 @@
 		{ icon: 'headset', title: 'Help desk on call', text: 'Multiple processes or a tight deadline? Our team can manage the whole order for you.', tone: 'orange' }
 	];
 
+	// ---------- seller home ----------
+	const sh = $derived(data.sellerHome);
+	const sellerSteps: { icon: IconName; title: string; text: string }[] = [
+		{ icon: 'bolt', title: 'Get matching leads', text: 'Requirements for the work you do reach you first — nearest factories ranked on top.' },
+		{ icon: 'check', title: 'Mark interested', text: 'One tap tells the buyer you can make it. Not for you? Pass and your feed gets sharper.' },
+		{ icon: 'doc', title: 'Send your quote', text: 'Quote in minutes with saved defaults and the cost estimator. Revise as you negotiate.' },
+		{ icon: 'handshake', title: 'Win the order', text: 'The buyer awards on the platform and calls you directly. No commission, ever.' }
+	];
+	const sellerFeatures: { icon: IconName; title: string; text: string; tone: string }[] = [
+		{ icon: 'pin', title: 'Leads near your factory', text: 'Matching ranks by pincode zone and distance, so local buyers find you before far-away competitors.', tone: 'orange' },
+		{ icon: 'chart', title: 'Quote in minutes', text: 'Saved defaults for GST, payment terms and freight, plus a cost estimator for machine hours.', tone: 'violet' },
+		{ icon: 'shield', title: 'Badge buyers trust', text: 'Documents verified, then factory visited — verified suppliers win more shortlists.', tone: 'blue' },
+		{ icon: 'spark', title: 'Complete profile, more leads', text: 'Complete profiles rank higher in matching. The ring on your photo shows what to add next.', tone: 'green' },
+		{ icon: 'phone', title: 'Direct buyer contact', text: 'Once verified you see the buyer’s name and number — call or WhatsApp straight away.', tone: 'blue' },
+		{ icon: 'headset', title: 'Help desk for growth', text: 'Spare capacity or a process you don’t do? Our team finds buyers and sub-contractors.', tone: 'orange' }
+	];
+	const myCategories = $derived(
+		[...data.categories]
+			.map((c) => ({ ...c, demand: data.demand.byShop[c.id] ?? 0, mine: sh?.registered && sh.mainShop === c.id }))
+			.sort((a, b) => Number(b.mine) - Number(a.mine) || b.demand - a.demand)
+	);
+
 	const preview = [
 		{ name: 'Supplier A', meta: 'Ground verified · 8 km', price: '₹412', tag: 'Lowest', best: true },
 		{ name: 'Supplier B', meta: 'Docs verified · 23 km', price: '₹438', tag: '', best: false },
@@ -41,6 +72,166 @@
 	<meta name="description" content="India's free marketplace for custom manufacturing. Post your requirement, get quotes from verified CNC, casting, forging, moulding and sheet metal factories nearby, and deal directly by phone or WhatsApp." />
 </svelte:head>
 
+{#snippet helpBand()}
+	<!-- ============ HELP DESK ============ -->
+	<section class="help-band">
+		<div class="hb-glow"></div>
+		<div class="hb-copy">
+			<span class="hb-ico"><Icon name="headset" size={26} /></span>
+			<!-- each side sees its own kind of help: sellers are never offered "we'll make your order" -->
+			{#if side === 'SELLER'}
+				<div>
+					<h2>Need more orders or a sub-contractor?</h2>
+					<p class="mb-0">Tell the eYantrik help desk — we help you find buyers for your spare capacity, or a partner for the processes you don't do in-house.</p>
+				</div>
+			{:else}
+				<div>
+					<h2>Multiple processes? Tight deadline?</h2>
+					<p class="mb-0">Hand it to the eYantrik help desk — we make it in our own plant or manage partner factories, with one point of contact and quality checks.</p>
+				</div>
+			{/if}
+		</div>
+		<a class="btn accent lg" href="/help">Talk to the help desk <Icon name="arrow" size={18} /></a>
+	</section>
+{/snippet}
+
+{#if side === 'SELLER' && sh}
+	<!-- ============ SELLER HOME ============ -->
+	<section class="hero">
+		<div class="glow g1"></div>
+		<div class="glow g2"></div>
+		<div class="glow g3 green"></div>
+		<div class="gridlines"></div>
+		<div class="hero-inner">
+			<div class="hero-copy">
+				<span class="pill-tag rise"><span class="dot"></span> Free for manufacturers — no commission</span>
+				<h1 class="rise" style="animation-delay:.05s">Fill your machines with <span class="hl">real orders</span> near you.</h1>
+				<p class="lead rise" style="animation-delay:.1s">
+					{#if sh.registered}Welcome back, {sh.name}. Buyers post requirements every day — the ones that match {sh.companyName} land in your lead feed first.{:else}Welcome, {sh.name}. Register your factory once and every matching requirement near you reaches your lead feed — free.{/if}
+				</p>
+				<div class="cta-row rise" style="animation-delay:.2s">
+					{#if sh.registered}
+						<a class="btn ok lg" href="/seller">Open your lead feed <Icon name="arrow" size={18} /></a>
+						{#if sh.percent < 100}<a class="btn glass lg" href="/seller/profile">Complete profile · {sh.percent}%</a>{/if}
+					{:else}
+						<a class="btn ok lg" href="/seller/onboarding">Register your factory <Icon name="arrow" size={18} /></a>
+					{/if}
+				</div>
+			</div>
+
+			<div class="hero-visual rise" style="animation-delay:.2s">
+				{#if sh.registered}
+					<a class="mock pcard" href="/seller/profile">
+						<div class="pc-top">
+							<ProfileRing percent={sh.percent} size={96} stroke={8} />
+							<div>
+								<div class="mock-eyebrow">Your profile</div>
+								<div class="mock-title">{sh.percent === 100 ? 'Complete — top of the list' : `${sh.percent}% complete`}</div>
+								<div class="mock-sub">{sh.percent === 100 ? 'You get the most leads.' : 'Complete it to meet more leads.'}</div>
+							</div>
+						</div>
+						{#if sh.missing.length}
+							<ul class="pc-list">
+								{#each sh.missing as m (m.id)}<li><span class="pc-pts">+{m.points}%</span> {m.label}</li>{/each}
+							</ul>
+						{/if}
+						<span class="mock-btn primary">{sh.percent === 100 ? 'View my profile' : 'Complete my profile'}</span>
+					</a>
+				{:else}
+					<div class="mock pcard">
+						<div class="mock-eyebrow">Get started</div>
+						<div class="mock-title">3 steps to your first lead</div>
+						<ul class="pc-list">
+							<li><span class="pc-pts">1</span> Register factory, machines & GST</li>
+							<li><span class="pc-pts">2</span> Documents verified (1–2 days)</li>
+							<li><span class="pc-pts">3</span> Matching leads in your feed</li>
+						</ul>
+						<a class="mock-btn primary" href="/seller/onboarding">Register now</a>
+					</div>
+				{/if}
+			</div>
+		</div>
+	</section>
+
+	<section class="trust">
+		<div class="trust-inner">
+			{#if sh.registered}
+				<a class="t-item link" href="/seller"><strong>{sh.matchingLeads}</strong><span>new matching leads</span></a>
+				<a class="t-item link" href="/seller?tab=quoted"><strong>{sh.quotesSent}</strong><span>quotes sent</span></a>
+				<a class="t-item link" href="/seller?tab=won"><strong>{sh.won}</strong><span>orders won</span></a>
+				<div class="t-item"><VerificationBadge status={sh.verification as VerificationStatus} /><span>verification</span></div>
+			{:else}
+				<div class="t-item"><strong>{data.demand.openRfqs}</strong><span>open requirements</span></div>
+				<div class="t-item"><strong>{data.demand.buyers}</strong><span>buyers on eYantrik</span></div>
+				<div class="t-item"><strong>{data.demand.cities}</strong><span>cities with demand</span></div>
+				<div class="t-item v"><Icon name="spark" size={22} /><span><b>Zero</b> commission</span></div>
+			{/if}
+		</div>
+	</section>
+
+	<main class="page">
+		{#if sh.registered}
+			<section class="section demand-strip">
+				<div class="d-item"><strong>{data.demand.openRfqs}</strong><span>open requirements on eYantrik</span></div>
+				<div class="d-item"><strong>{data.demand.buyers}</strong><span>buyers looking for factories</span></div>
+				<div class="d-item"><strong>{data.demand.cities}</strong><span>cities with open demand</span></div>
+			</section>
+		{/if}
+
+		<section class="section">
+			<div class="section-head">
+				<span class="eyebrow">How it works for manufacturers</span>
+				<h2>From lead to order in four steps</h2>
+				<p class="muted">No bidding fees, no brokers — buyers come to you.</p>
+			</div>
+			<div class="steps">
+				{#each sellerSteps as st, i (st.title)}
+					<div class="step">
+						<div class="step-top"><span class="step-ico"><Icon name={st.icon} size={22} /></span><span class="step-no">0{i + 1}</span></div>
+						<h3>{st.title}</h3>
+						<p class="muted small mb-0">{st.text}</p>
+					</div>
+				{/each}
+			</div>
+		</section>
+
+		<section class="section">
+			<div class="section-head">
+				<span class="eyebrow">Why eYantrik</span>
+				<h2>Built to keep your machines busy</h2>
+			</div>
+			<div class="features">
+				{#each sellerFeatures as f (f.title)}
+					<div class="feature card hover">
+						<span class="f-ico {f.tone}"><Icon name={f.icon} size={22} /></span>
+						<h3>{f.title}</h3>
+						<p class="muted small mb-0">{f.text}</p>
+					</div>
+				{/each}
+			</div>
+		</section>
+
+		<section class="section">
+			<div class="section-head">
+				<span class="eyebrow">Buyer demand</span>
+				<h2>Open requirements by type of work</h2>
+				<p class="muted">What buyers need right now. Your main type of work is on top.</p>
+			</div>
+			<div class="cats">
+				{#each myCategories as c (c.id)}
+					<a href={sh.registered ? '/seller?tab=all' : '/seller/onboarding'} class="cat" class:mine={c.mine}>
+						<span class="cat-mark" aria-hidden="true">{c.emoji}</span>
+						<span class="cat-label">{c.label}{#if c.mine} <em class="mine-tag">your work</em>{/if}<small>{c.examples}</small></span>
+						<span class="cat-count" title="Open requirements">{c.demand > 0 ? c.demand : ''}</span>
+						<Icon name="arrow" size={16} class="cat-arrow" />
+					</a>
+				{/each}
+			</div>
+		</section>
+
+		{@render helpBand()}
+	</main>
+{:else}
 <!-- ============ HERO ============ -->
 <section class="hero">
 	<div class="glow g1"></div>
@@ -50,7 +241,20 @@
 
 	<div class="hero-inner">
 		<div class="hero-copy">
-			<span class="pill-tag rise"><span class="dot"></span> 100% free for buyers & manufacturers</span>
+			{#if side === 'BUYER' && data.buyerHome}
+				<a class="me-strip rise" href="/buyer/dashboard">
+					<span>👋 Welcome back, <strong>{data.buyerHome.name}</strong></span>
+					{#if data.buyerHome.total}
+						<span>· <strong>{data.buyerHome.open}</strong> open requirement{data.buyerHome.open === 1 ? '' : 's'}</span>
+						{#if data.buyerHome.quotesWaiting}<span class="hot">· {data.buyerHome.quotesWaiting} new quote{data.buyerHome.quotesWaiting === 1 ? '' : 's'} waiting</span>{/if}
+					{:else}
+						<span>· Post your first requirement to unlock supplier contacts</span>
+					{/if}
+					<span class="go">My requirements →</span>
+				</a>
+			{:else}
+				<span class="pill-tag rise"><span class="dot"></span> 100% free for buyers & manufacturers</span>
+			{/if}
 			<h1 class="rise" style="animation-delay:.05s">
 				Get parts made by <span class="hl">verified factories</span> near you.
 			</h1>
@@ -249,21 +453,34 @@
 		</section>
 	{/if}
 
-	<!-- ============ HELP DESK ============ -->
-	<section class="help-band">
-		<div class="hb-glow"></div>
-		<div class="hb-copy">
-			<span class="hb-ico"><Icon name="headset" size={26} /></span>
-			<div>
-				<h2>Multiple processes? Tight deadline?</h2>
-				<p class="mb-0">Hand it to the eYantrik help desk — we make it in our own plant or manage partner factories, with one point of contact and quality checks.</p>
-			</div>
-		</div>
-		<a class="btn accent lg" href="/help">Talk to the help desk <Icon name="arrow" size={18} /></a>
-	</section>
+	{@render helpBand()}
 </main>
+{/if}
 
 <style>
+	/* ---------- Buyer strip / seller home ---------- */
+	.me-strip { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.86rem; color: #e0e7ff; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.16); padding: 8px 14px; border-radius: 14px; margin-bottom: 20px; text-decoration: none; }
+	.me-strip:hover { background: rgba(255,255,255,.14); color: #fff; }
+	.me-strip .hot { color: #fdba74; font-weight: 700; }
+	.me-strip .go { font-weight: 700; color: #fff; margin-left: 4px; }
+	.g3.green { background: #12b886; }
+	a.pcard { display: block; text-decoration: none; }
+	.pcard { color: var(--ink); }
+	.pc-top { display: flex; gap: 16px; align-items: center; }
+	.pc-list { list-style: none; padding: 0; margin: 16px 0 14px; display: grid; gap: 8px; font-size: 0.86rem; font-weight: 600; }
+	.pc-list li { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+	.pc-pts { font-size: 0.72rem; font-weight: 800; color: var(--ok-ink); background: var(--ok-soft); border-radius: 999px; padding: 2px 8px; min-width: 38px; text-align: center; }
+	.pcard .mock-btn { display: block; }
+	.t-item.link { text-decoration: none; color: inherit; border-radius: 12px; padding: 4px; }
+	.t-item.link:hover { background: #f6f7fb; }
+	.demand-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding-bottom: 0; }
+	.d-item { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; }
+	.d-item strong { font-family: var(--font-display); font-size: 1.5rem; }
+	.d-item span { font-size: 0.82rem; color: var(--muted); }
+	@media (max-width: 640px) { .demand-strip { grid-template-columns: minmax(0, 1fr); } }
+	.cat.mine { border-color: var(--ok); background: #f3fbf7; }
+	.mine-tag { font-style: normal; font-size: 0.66rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--ok-ink); background: var(--ok-soft); border-radius: 999px; padding: 1px 7px; margin-left: 4px; }
+
 	/* ---------- Hero ---------- */
 	.hero { position: relative; overflow: hidden; background: var(--navy); color: #fff; isolation: isolate; }
 	.glow { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.55; z-index: -1; animation: drift 14s ease-in-out infinite alternate; }

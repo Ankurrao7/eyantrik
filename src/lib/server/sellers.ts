@@ -17,8 +17,13 @@ export const findSellerById = (id: string) => sellers.findOne<Seller>({ id }, no
 export const findSellerBySlug = (slug: string) => sellers.findOne<Seller>({ slug }, noMongoId);
 
 export const listSellers = (filter: Filter<Seller> = {}) => sellers.find<Seller>(filter, noMongoId).toArray();
-/** Sellers buyers can see and that receive leads (documents or ground verified). */
-export const listedSellers = () => listSellers({ verification: { $in: LISTED_STATUSES } });
+/**
+ * Sellers buyers can see and that receive leads: documents or ground verified, and not suspended/deactivated
+ * by the admin team (a missing accountStatus counts as active).
+ */
+export const LISTED_FILTER: Filter<Seller> = { verification: { $in: LISTED_STATUSES }, accountStatus: { $nin: ['SUSPENDED', 'DEACTIVATED'] } };
+export const isListed = (s: Seller) => LISTED_STATUSES.includes(s.verification) && (!s.accountStatus || s.accountStatus === 'ACTIVE');
+export const listedSellers = () => listSellers(LISTED_FILTER);
 
 /** Map of id → seller for showing names on lists (one query instead of one per row). */
 export async function sellersById(ids: (string | undefined)[]): Promise<Map<string, Seller>> {

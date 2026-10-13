@@ -53,7 +53,7 @@ export function sellerResponse(rfqId: string, sellerId: string) {
 /** Seller signals interest (allowed before verification). Notifies the buyer once. Returns an error message or null. */
 export function markInterested(seller: Seller, rfqId: string | undefined): string | null {
 	const rfq = db.rfqs.find((r) => r.id === rfqId);
-	if (!rfq || !isQuotingOpen(rfq)) return 'This requirement is closed for new responses.';
+	if (!rfq || rfq.hidden || !isQuotingOpen(rfq)) return 'This requirement is closed for new responses.';
 	const existing = sellerResponse(rfq.id, seller.id);
 	if (existing?.kind === 'INTERESTED') return null;
 	if (existing) Object.assign(existing, { kind: 'INTERESTED', reason: undefined, at: now() });

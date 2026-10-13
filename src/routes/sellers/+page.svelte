@@ -78,7 +78,7 @@
 					<p class="muted">We're onboarding new factories every week. Post your requirement and our help desk will find one for you.</p>
 					<div class="row gap center-x">
 						{#if data.lockReason !== 'role'}<a class="btn" href="/rfq/new">Post requirement</a>{/if}
-						<a class="btn ghost" href="/help">Ask the help desk</a>
+						{#if data.lockReason !== 'role'}<a class="btn ghost" href="/help">Ask the help desk</a>{/if}
 					</div>
 				</div>
 			{:else}

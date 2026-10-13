@@ -27,7 +27,7 @@ export async function notifyRfqPosted(rfq: Rfq, mode: 'POSTED' | 'UPDATED' = 'PO
 	const where = `${rfq.values.deliveryCity}`;
 	let count = 0;
 	// one query for every seller who could get a lead or a teaser
-	const candidates = await listSellers({ verification: { $in: ['DOCS_VERIFIED', 'GROUND_VERIFIED', 'DOCS_SUBMITTED'] } });
+	const candidates = await listSellers({ verification: { $in: ['DOCS_VERIFIED', 'GROUND_VERIFIED', 'DOCS_SUBMITTED'] }, accountStatus: { $nin: ['SUSPENDED', 'DEACTIVATED'] } });
 	for (const seller of candidates) {
 		if (skip.has(seller.id)) continue;
 		const m = scoreMatch(seller, rfq);
@@ -53,6 +53,18 @@ export async function notifyRfqPosted(rfq: Rfq, mode: 'POSTED' | 'UPDATED' = 'PO
 	return count;
 }
 
+/**
+ * A person's notifications, newest first — minus alerts about a requirement that is on hold
+ * (its buyer was suspended/deactivated), so a seller never gets a link that leads nowhere.
+ */
+export function notificationsFor(userId: string) {
+	return db.notifications.filter((n) => {
+		if (n.userId !== userId) return false;
+		const rfqId = /^\/seller\/rfq\/([^/?#]+)/.exec(n.link)?.[1];
+		return !rfqId || !db.rfqs.find((r) => r.id === rfqId)?.hidden;
+	});
+}
+
 export function unreadCount(userId: string): number {
-	return db.notifications.filter((n) => n.userId === userId && !n.read).length;
+	return notificationsFor(userId).filter((n) => !n.read).length;
 }

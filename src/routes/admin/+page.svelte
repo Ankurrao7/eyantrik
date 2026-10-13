@@ -2,12 +2,17 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import SellerProfileFields from '#lib/components/SellerProfileFields.svelte';
+	import VerificationBadge from '#lib/components/VerificationBadge.svelte';
+	import AccountBadge from '#lib/components/AccountBadge.svelte';
+	import ProfileRing from '#lib/components/ProfileRing.svelte';
 
 	let { data, form } = $props();
 
 	const tabs = $derived([
 		{ id: 'queue', label: 'Work queue', count: data.queue.length },
 		{ id: 'overview', label: 'Overview' },
+		{ id: 'suppliers', label: 'Suppliers', count: 0 },
+		{ id: 'buyers', label: 'Buyers', count: 0 },
 		{ id: 'requirements', label: 'Requirements', count: 0 },
 		{ id: 'add-seller', label: 'Add seller (team)' },
 		{ id: 'helpdesk', label: 'Help desk', count: data.tickets.filter((t) => t.status === 'NEW').length },
@@ -55,6 +60,34 @@
 	const baseCost = $derived(job ? job.steps.reduce((n, s) => n + s.unitCost, 0) : 0);
 	const quote = $derived(Math.round(baseCost * (1 + margin / 100)));
 	const totalMargin = $derived(job ? (quote - baseCost) * job.quantity : 0);
+
+	// ---------- Suppliers & buyers (full details, admin only) ----------
+	const SUPPLIER_FILTER_LABEL: Record<string, string> = {
+		ALL: 'All', DOCS_SUBMITTED: 'Awaiting review', DOCS_VERIFIED: 'Docs verified', GROUND_VERIFIED: 'Ground verified', REJECTED: 'Sent back', OFF: 'Suspended / deactivated'
+	};
+	let supplierSearch = $state('');
+	let supplierState = $state('');
+	const supplierStates = $derived([...new Set(data.suppliers.map((x) => x.state))].sort());
+	const shownSuppliers = $derived(
+		data.suppliers.filter((x) => {
+			const f = data.supplierFilter;
+			if (f === 'OFF' ? x.accountStatus === 'ACTIVE' : f !== 'ALL' && (x.verification !== f || x.accountStatus !== 'ACTIVE')) return false;
+			if (supplierState && x.state !== supplierState) return false;
+			const q = supplierSearch.trim().toLowerCase();
+			return !q || `${x.companyName} ${x.id} ${x.city} ${x.contactPerson} ${x.phone} ${x.whatsapp} ${x.email} ${x.gstin} ${x.mainShop}`.toLowerCase().includes(q);
+		})
+	);
+	let buyerSearch = $state('');
+	let buyerStatus = $state<'ALL' | 'ACTIVE' | 'OFF'>('ALL');
+	const shownBuyers = $derived(
+		data.buyers.filter((x) => {
+			if (buyerStatus === 'ACTIVE' && x.accountStatus !== 'ACTIVE') return false;
+			if (buyerStatus === 'OFF' && x.accountStatus === 'ACTIVE') return false;
+			const q = buyerSearch.trim().toLowerCase();
+			return !q || `${x.name} ${x.companyName} ${x.id} ${x.phone} ${x.email}`.toLowerCase().includes(q);
+		})
+	);
+	const day = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
 	let ticketRole = $state<Record<string, string>>({});
 	const keep = () => async ({ update }: { update: (o?: { reset?: boolean }) => Promise<void> }) => update({ reset: false });
@@ -146,9 +179,77 @@
 		</div>
 		<h3 class="mt-lg">Needs attention</h3>
 		<div class="grid three">
-			<a class="stat link" href="?tab=verification"><div class="v">{data.kpis.pendingReview}</div><div class="k">Sellers awaiting document review →</div></a>
-			<a class="stat link" href="?tab=verification"><div class="v">{data.kpis.awaitingVisit}</div><div class="k">Sellers awaiting ground visit →</div></a>
+			<a class="stat link" href="?tab=suppliers&status=DOCS_SUBMITTED"><div class="v">{data.kpis.pendingReview}</div><div class="k">Sellers awaiting document review →</div></a>
+			<a class="stat link" href="?tab=suppliers&status=DOCS_VERIFIED"><div class="v">{data.kpis.awaitingVisit}</div><div class="k">Sellers awaiting ground visit →</div></a>
 			<a class="stat link" href="?tab=helpdesk"><div class="v">{data.kpis.ticketsOpen}</div><div class="k">Open help desk tickets →</div></a>
+		</div>
+
+	{:else if data.tab === 'suppliers'}
+		<p class="muted small">Every company on eYantrik at every stage, with full contact details. Open one to see its documents, verification record, activity — and to suspend or deactivate it.</p>
+		<div class="queue-head">
+			<div class="filters" aria-label="Filter suppliers">
+				{#each data.supplierFilters as f (f)}
+					<a class="chip-link" class:on={data.supplierFilter === f} href="?tab=suppliers{f === 'ALL' ? '' : `&status=${f}`}" data-sveltekit-noscroll>{SUPPLIER_FILTER_LABEL[f]} <span>{data.supplierCounts[f]}</span></a>
+				{/each}
+			</div>
+			<div class="row gap">
+				<select bind:value={supplierState} aria-label="State" class="q-select"><option value="">All states</option>{#each supplierStates as st}<option value={st}>{st}</option>{/each}</select>
+				<input type="search" class="q-search" placeholder="Company, person, phone, GSTIN, work…" bind:value={supplierSearch} aria-label="Search suppliers" />
+			</div>
+		</div>
+		<div class="table-wrap">
+			<table>
+				<thead><tr><th>Company</th><th>Contact</th><th>GSTIN</th><th>Status</th><th>Profile</th><th class="num">Docs</th><th class="num">Quotes / won</th><th>Joined</th><th></th></tr></thead>
+				<tbody>
+					{#each shownSuppliers as x (x.id)}
+						<tr>
+							<td><a href="/admin/review/seller/{x.id}"><strong>{x.companyName}</strong></a><div class="tiny muted">{x.id} · {x.city}, {x.state}{x.onboardedBy === 'TEAM' ? ' · added by team' : ''}</div>{#if x.mainShop}<div class="tiny">{x.mainShop}</div>{:else}<div class="tiny muted">Main work not set</div>{/if}</td>
+							<td class="small"><strong>{x.contactPerson}</strong><div><a href="tel:+91{x.phone}">📞 +91 {x.phone}</a></div><div><a href="https://wa.me/91{x.whatsapp}" target="_blank" rel="noopener">💬 +91 {x.whatsapp}</a></div>{#if x.email}<div><a href="mailto:{x.email}">{x.email}</a></div>{/if}</td>
+							<td class="small"><code>{x.gstin}</code></td>
+							<td><VerificationBadge status={x.verification} />{#if x.accountStatus !== 'ACTIVE'}<div class="mt-xs"><AccountBadge status={x.accountStatus} /></div>{/if}</td>
+							<td><ProfileRing percent={x.profilePct} size={38} stroke={4} /></td>
+							<td class="num">{x.documents}</td>
+							<td class="num">{x.quotes} / {x.won}{#if x.rating}<div class="tiny muted">★ {x.rating} ({x.reviewCount})</div>{/if}</td>
+							<td class="small">{day(x.createdAt)}</td>
+							<td><a class="btn sm" href="/admin/review/seller/{x.id}">Open →</a></td>
+						</tr>
+					{:else}
+						<tr><td colspan="9" class="muted">{data.suppliers.length === 0 ? 'No suppliers yet.' : 'Nothing matches this filter.'}</td></tr>
+					{/each}
+				</tbody>
+			</table>
+		</div>
+
+	{:else if data.tab === 'buyers'}
+		<p class="muted small">Every buyer account with full contact details and what they did on the platform. Open one to see their requirements and to suspend or deactivate it.</p>
+		<div class="queue-head">
+			<div class="filters" role="tablist" aria-label="Filter buyers">
+				<button type="button" role="tab" aria-selected={buyerStatus === 'ALL'} class:on={buyerStatus === 'ALL'} onclick={() => (buyerStatus = 'ALL')}>All <span>{data.buyers.length}</span></button>
+				<button type="button" role="tab" aria-selected={buyerStatus === 'ACTIVE'} class:on={buyerStatus === 'ACTIVE'} onclick={() => (buyerStatus = 'ACTIVE')}>Active <span>{data.buyers.filter((x) => x.accountStatus === 'ACTIVE').length}</span></button>
+				<button type="button" role="tab" aria-selected={buyerStatus === 'OFF'} class:on={buyerStatus === 'OFF'} onclick={() => (buyerStatus = 'OFF')}>Suspended / deactivated <span>{data.buyers.filter((x) => x.accountStatus !== 'ACTIVE').length}</span></button>
+			</div>
+			<input type="search" class="q-search" placeholder="Name, company, phone, email…" bind:value={buyerSearch} aria-label="Search buyers" />
+		</div>
+		<div class="table-wrap">
+			<table>
+				<thead><tr><th>Buyer</th><th>Contact</th><th class="num">Requirements</th><th class="num">Quotes</th><th class="num">Awarded</th><th class="num">Help</th><th>Joined</th><th></th></tr></thead>
+				<tbody>
+					{#each shownBuyers as x (x.id)}
+						<tr>
+							<td><a href="/admin/buyers/{x.id}"><strong>{x.name}</strong></a><div class="tiny muted">{x.companyName || '—'} · {x.id}</div>{#if x.accountStatus !== 'ACTIVE'}<div class="mt-xs"><AccountBadge status={x.accountStatus} /></div>{/if}</td>
+							<td class="small"><div><a href="tel:+91{x.phone}">📞 +91 {x.phone}</a></div><div><a href="https://wa.me/91{x.phone}" target="_blank" rel="noopener">💬 WhatsApp</a></div>{#if x.email}<div><a href="mailto:{x.email}">{x.email}</a></div>{/if}</td>
+							<td class="num">{x.rfqs}{#if x.openRfqs}<div class="tiny muted">{x.openRfqs} open</div>{/if}</td>
+							<td class="num">{x.quotes}</td>
+							<td class="num">{x.awarded}</td>
+							<td class="num">{x.tickets}</td>
+							<td class="small">{day(x.createdAt)}</td>
+							<td><a class="btn sm" href="/admin/buyers/{x.id}">Open →</a></td>
+						</tr>
+					{:else}
+						<tr><td colspan="8" class="muted">{data.buyers.length === 0 ? 'No buyers yet.' : 'Nothing matches this filter.'}</td></tr>
+					{/each}
+				</tbody>
+			</table>
 		</div>
 
 	{:else if data.tab === 'requirements'}
@@ -166,7 +267,7 @@
 									<ul class="file-links">{#each r.files as f}<li>{#if f.url}<a href={f.url} target="_blank" rel="noopener">📎 {f.label}</a>{:else}<span class="muted">📎 {f.label} (not kept)</span>{/if}</li>{/each}</ul>
 								{/if}
 							</td>
-							<td>{#if r.buyer}<strong>{r.buyer.name}</strong><div class="tiny muted">{r.buyer.company}</div><a class="small" href="tel:+91{r.buyer.phone}">📞 +91 {r.buyer.phone}</a>{:else}—{/if}</td>
+							<td>{#if r.buyer}<a href="/admin/buyers/{r.buyerUserId}"><strong>{r.buyer.name}</strong></a><div class="tiny muted">{r.buyer.company}</div><a class="small" href="tel:+91{r.buyer.phone}">📞 +91 {r.buyer.phone}</a>{#if r.buyerOnHold}<div class="tiny" style="color:var(--warn-ink)">⏸ Buyer on hold — hidden from sellers</div>{/if}{:else}—{/if}</td>
 							<td class="small">{r.city}</td>
 							<td class="num">{r.interested}</td>
 							<td class="num">{r.quotes}</td>
@@ -386,6 +487,12 @@
 	.filters button.on { background: var(--navy); border-color: var(--navy); color: #fff; }
 	.filters button.on span { color: #c7d2fe; }
 	.q-search { max-width: 280px; }
+	.q-select { width: auto; }
+	.chip-link { border: 1px solid var(--line-2); background: #fff; border-radius: 999px; padding: 6px 12px; font-size: 0.84rem; font-weight: 600; color: var(--ink-2); text-decoration: none; }
+	.chip-link span { margin-left: 4px; color: var(--muted); font-weight: 700; }
+	.chip-link.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+	.chip-link.on span { color: #c7d2fe; }
+	.mt-xs { margin-top: 4px; }
 	.queue { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
 	.q-item { display: flex; gap: 14px; align-items: flex-start; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; box-shadow: var(--shadow); }
 	.q-icon { font-size: 1.4rem; line-height: 1; margin-top: 2px; }

@@ -81,6 +81,39 @@ export const ORDER_TYPE_LABEL: Record<string, string> = Object.fromEntries(
 	ORDER_TYPES.map((o) => [o.id, o.label])
 );
 
+// ---- Fixed seller attributes (decision 2026-10-12) ----
+// Every seller answers from the SAME short lists, so suppliers can be grouped and filtered on fixed
+// attributes (not free text). Order sizes reuse ORDER_TYPES above, so they line up with the RFQ form.
+
+export const TEAM_SIZES = [
+	{ id: 'T1_10', label: '1 – 10 people' },
+	{ id: 'T11_50', label: '11 – 50 people' },
+	{ id: 'T51_200', label: '51 – 200 people' },
+	{ id: 'T200_PLUS', label: '200+ people' }
+] as const;
+export const TEAM_SIZE_LABEL: Record<string, string> = Object.fromEntries(TEAM_SIZES.map((t) => [t.id, t.label]));
+
+/** Largest part the factory can make (longest side). `mm` lets it be compared with an RFQ's bounding box. */
+export const PART_SIZES = [
+	{ id: 'UP_100', label: 'Small — up to 100 mm', mm: 100 },
+	{ id: 'UP_500', label: 'Medium — up to 500 mm', mm: 500 },
+	{ id: 'UP_1500', label: 'Large — up to 1.5 m', mm: 1500 },
+	{ id: 'OVER_1500', label: 'Very large — over 1.5 m', mm: 20_000 }
+] as const;
+export const PART_SIZE_LABEL: Record<string, string> = Object.fromEntries(PART_SIZES.map((p) => [p.id, p.label]));
+
+/** Tightest tolerance the factory holds regularly. `mm` lets it be compared with an RFQ's tolerance. */
+export const TOLERANCES = [
+	{ id: 'T0_1', label: '± 0.1 mm (general)', mm: 0.1 },
+	{ id: 'T0_05', label: '± 0.05 mm (precision)', mm: 0.05 },
+	{ id: 'T0_01', label: '± 0.01 mm (high precision)', mm: 0.01 },
+	{ id: 'T0_005', label: '± 0.005 mm or better', mm: 0.005 }
+] as const;
+export const TOLERANCE_LABEL: Record<string, string> = Object.fromEntries(TOLERANCES.map((t) => [t.id, t.label]));
+
+/** Common certifications as fixed choices (anything else goes in "Other certifications"). */
+export const CERTIFICATIONS = ['ISO 9001', 'IATF 16949', 'AS9100', 'ISO 14001', 'ISO 45001', 'NABL lab', 'ZED (MSME)'] as const;
+
 export const INDIAN_STATES = [
 	'Andhra Pradesh', 'Bihar', 'Chhattisgarh', 'Delhi', 'Goa', 'Gujarat', 'Haryana',
 	'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra',

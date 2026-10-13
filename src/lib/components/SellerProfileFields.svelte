@@ -1,22 +1,31 @@
-<!-- Seller profile fields, shared by /seller/onboarding (self) and /admin Add seller (team). -->
+<!-- Seller profile fields, shared by /seller/onboarding (SELF), /admin Add seller (TEAM) and the
+     seller's own profile page (EDIT). In EDIT mode the verified identity — company name, GSTIN and
+     factory address — is shown locked (changing it needs re-verification through the help desk), and
+     documents are replaced by "add more shop-floor photos". Section ids (#company, #capabilities,
+     #machines, #photos) are the targets of the profile-completeness checklist links. -->
 <script lang="ts">
 	import PhoneInput from './PhoneInput.svelte';
 	import ProcessPicker from './ProcessPicker.svelte';
-	import { INDIAN_STATES, INDUSTRIES, MATERIAL_CATEGORIES } from '../taxonomy.ts';
+	import { CERTIFICATIONS, INDIAN_STATES, INDUSTRIES, MATERIAL_CATEGORIES, ORDER_TYPES, PART_SIZES, TEAM_SIZES, TOLERANCES } from '../taxonomy.ts';
+	import { SHOPS } from '../processes.ts';
 
 	type Values = {
 		companyName?: string; contactPerson?: string; phone?: string; whatsapp?: string; email?: string;
 		gstin?: string; address?: string; city?: string; state?: string; pincode?: string;
 		yearEstablished?: string; about?: string; processes?: string[]; materials?: string[]; industries?: string[];
-		machines?: { name: string; count: string }[]; certifications?: string;
+		machines?: { name: string; count: string }[]; certChoices?: string[]; certifications?: string;
+		mainShop?: string; orderTypes?: string[]; teamSize?: string; maxPartSize?: string; bestTolerance?: string;
 	};
 
 	let {
 		values = {},
 		errors = {},
 		mode,
-		fixedPhone
-	}: { values?: Values; errors?: Record<string, string>; mode: 'SELF' | 'TEAM'; fixedPhone?: string } = $props();
+		fixedPhone,
+		photoCount = 0,
+		maxPhotos = 10
+	}: { values?: Values; errors?: Record<string, string>; mode: 'SELF' | 'TEAM' | 'EDIT'; fixedPhone?: string; photoCount?: number; maxPhotos?: number } = $props();
+	const editing = $derived(mode === 'EDIT');
 
 	let machines = $state<{ name: string; count: string }[]>([{ name: '', count: '1' }]);
 	$effect(() => {
@@ -25,17 +34,18 @@
 	const docsRequired = $derived(mode === 'SELF');
 </script>
 
-<fieldset>
+<fieldset id="company">
 	<legend>Company</legend>
+	{#if editing}<p class="hint locked-note">🔒 Company name, GSTIN and factory address are verified details. To change them, contact the help desk — the change is verified again.</p>{/if}
 	<div class="form-grid">
 		<div class="field full" class:invalid={errors.companyName}>
-			<label for="companyName">Registered company name <span class="req">*</span></label>
-			<input id="companyName" name="companyName" value={values.companyName ?? ''} required maxlength="120" />
+			<label for="companyName">Registered company name {#if !editing}<span class="req">*</span>{/if}</label>
+			{#if editing}<input id="companyName" value={values.companyName ?? ''} disabled />{:else}<input id="companyName" name="companyName" value={values.companyName ?? ''} required maxlength="120" />{/if}
 			{#if errors.companyName}<span class="err">{errors.companyName}</span>{/if}
 		</div>
 		<div class="field" class:invalid={errors.gstin}>
-			<label for="gstin">GSTIN <span class="req">*</span></label>
-			<input id="gstin" name="gstin" value={values.gstin ?? ''} required maxlength="15" style="text-transform:uppercase" placeholder="09ABCDE1234F1Z5" />
+			<label for="gstin">GSTIN {#if !editing}<span class="req">*</span>{/if}</label>
+			{#if editing}<input id="gstin" value={values.gstin ?? ''} disabled />{:else}<input id="gstin" name="gstin" value={values.gstin ?? ''} required maxlength="15" style="text-transform:uppercase" placeholder="09ABCDE1234F1Z5" />{/if}
 			{#if errors.gstin}<span class="err">{errors.gstin}</span>{/if}
 		</div>
 		<div class="field" class:invalid={errors.yearEstablished}>
@@ -49,8 +59,13 @@
 			{#if errors.about}<span class="err">{errors.about}</span>{/if}
 		</div>
 		<div class="field full">
-			<label for="certifications">Certifications</label>
-			<input id="certifications" name="certifications" value={values.certifications ?? ''} placeholder="Comma separated, e.g. ISO 9001:2015, IATF 16949" />
+			<span class="label" id="cert-label">Certifications</span>
+			<div class="checks" role="group" aria-labelledby="cert-label">
+				{#each CERTIFICATIONS as c (c)}
+					<label><input type="checkbox" name="certChoices" value={c} checked={values.certChoices?.includes(c)} /> {c}</label>
+				{/each}
+			</div>
+			<input id="certifications" name="certifications" value={values.certifications ?? ''} placeholder="Other certifications, comma separated" aria-label="Other certifications" class="mt-xs" />
 		</div>
 	</div>
 </fieldset>
@@ -67,7 +82,7 @@
 			<label for="phone">Mobile (shown to buyers) <span class="req">*</span></label>
 			{#if fixedPhone}
 				<input id="phone" value="+91 {fixedPhone}" disabled />
-				<span class="hint">Your login number.</span>
+				<span class="hint">Your login number{editing ? ' — to change it, contact the help desk' : ''}.</span>
 			{:else}
 				<PhoneInput id="phone" name="phone" value={values.phone ?? ''} required />
 				<span class="hint">The owner can later log in with this number.</span>
@@ -84,34 +99,86 @@
 			<input id="email" name="email" type="email" value={values.email ?? ''} />
 			{#if errors.email}<span class="err">{errors.email}</span>{/if}
 		</div>
-		<div class="field full" class:invalid={errors.address}>
-			<label for="address">Factory address <span class="req">*</span></label>
-			<input id="address" name="address" value={values.address ?? ''} required placeholder="Plot / shed no., sector / industrial area" />
-			{#if errors.address}<span class="err">{errors.address}</span>{/if}
-		</div>
-		<div class="field" class:invalid={errors.city}>
-			<label for="city">City <span class="req">*</span></label>
-			<input id="city" name="city" value={values.city ?? ''} required />
-			{#if errors.city}<span class="err">{errors.city}</span>{/if}
-		</div>
-		<div class="field" class:invalid={errors.state}>
-			<label for="state">State <span class="req">*</span></label>
-			<select id="state" name="state" value={values.state ?? ''} required>
-				<option value="" disabled>Select…</option>
-				{#each INDIAN_STATES as st}<option value={st}>{st}</option>{/each}
-			</select>
-			{#if errors.state}<span class="err">{errors.state}</span>{/if}
-		</div>
-		<div class="field" class:invalid={errors.pincode}>
-			<label for="pincode">Pincode <span class="req">*</span></label>
-			<input id="pincode" name="pincode" inputmode="numeric" maxlength="6" value={values.pincode ?? ''} required />
-			{#if errors.pincode}<span class="err">{errors.pincode}</span>{/if}
-		</div>
+		{#if editing}
+			<div class="field full">
+				<label for="address">Factory address 🔒</label>
+				<input id="address" value="{values.address}, {values.city}, {values.state} {values.pincode}" disabled />
+			</div>
+		{:else}
+			<div class="field full" class:invalid={errors.address}>
+				<label for="address">Factory address <span class="req">*</span></label>
+				<input id="address" name="address" value={values.address ?? ''} required placeholder="Plot / shed no., sector / industrial area" />
+				{#if errors.address}<span class="err">{errors.address}</span>{/if}
+			</div>
+			<div class="field" class:invalid={errors.city}>
+				<label for="city">City <span class="req">*</span></label>
+				<input id="city" name="city" value={values.city ?? ''} required />
+				{#if errors.city}<span class="err">{errors.city}</span>{/if}
+			</div>
+			<div class="field" class:invalid={errors.state}>
+				<label for="state">State <span class="req">*</span></label>
+				<select id="state" name="state" value={values.state ?? ''} required>
+					<option value="" disabled>Select…</option>
+					{#each INDIAN_STATES as st}<option value={st}>{st}</option>{/each}
+				</select>
+				{#if errors.state}<span class="err">{errors.state}</span>{/if}
+			</div>
+			<div class="field" class:invalid={errors.pincode}>
+				<label for="pincode">Pincode <span class="req">*</span></label>
+				<input id="pincode" name="pincode" inputmode="numeric" maxlength="6" value={values.pincode ?? ''} required />
+				{#if errors.pincode}<span class="err">{errors.pincode}</span>{/if}
+			</div>
+		{/if}
 	</div>
 </fieldset>
 
-<fieldset>
+<fieldset id="capabilities">
 	<legend>Capabilities</legend>
+	<p class="hint">Fields marked <span class="req">*</span> use fixed choices, so buyers can find you by type of work, order size and factory size.</p>
+	<div class="form-grid">
+		<div class="field full" class:invalid={errors.mainShop}>
+			<label for="mainShop">Main type of work <span class="req">*</span></label>
+			<select id="mainShop" name="mainShop" value={values.mainShop ?? ''} required>
+				<option value="" disabled>Choose what your factory mostly does…</option>
+				{#each SHOPS as sh (sh.id)}<option value={sh.id}>{sh.emoji} {sh.label}</option>{/each}
+			</select>
+			<span class="hint">Your main category on eYantrik. You can still tick processes from other shops below.</span>
+			{#if errors.mainShop}<span class="err">{errors.mainShop}</span>{/if}
+		</div>
+		<div class="field full" class:invalid={errors.orderTypes}>
+			<span class="label" id="ord-label">Order sizes you take <span class="req">*</span></span>
+			<div class="checks" role="group" aria-labelledby="ord-label">
+				{#each ORDER_TYPES as o (o.id)}
+					<label><input type="checkbox" name="orderTypes" value={o.id} checked={values.orderTypes?.includes(o.id)} /> {o.label}</label>
+				{/each}
+			</div>
+			{#if errors.orderTypes}<span class="err">{errors.orderTypes}</span>{/if}
+		</div>
+		<div class="field" class:invalid={errors.teamSize}>
+			<label for="teamSize">Team size <span class="req">*</span></label>
+			<select id="teamSize" name="teamSize" value={values.teamSize ?? ''} required>
+				<option value="" disabled>Select…</option>
+				{#each TEAM_SIZES as t (t.id)}<option value={t.id}>{t.label}</option>{/each}
+			</select>
+			{#if errors.teamSize}<span class="err">{errors.teamSize}</span>{/if}
+		</div>
+		<div class="field" class:invalid={errors.maxPartSize}>
+			<label for="maxPartSize">Largest part you can make</label>
+			<select id="maxPartSize" name="maxPartSize" value={values.maxPartSize ?? ''}>
+				<option value="">Not sure</option>
+				{#each PART_SIZES as p (p.id)}<option value={p.id}>{p.label}</option>{/each}
+			</select>
+			{#if errors.maxPartSize}<span class="err">{errors.maxPartSize}</span>{/if}
+		</div>
+		<div class="field" class:invalid={errors.bestTolerance}>
+			<label for="bestTolerance">Best tolerance you hold</label>
+			<select id="bestTolerance" name="bestTolerance" value={values.bestTolerance ?? ''}>
+				<option value="">Not sure</option>
+				{#each TOLERANCES as t (t.id)}<option value={t.id}>{t.label}</option>{/each}
+			</select>
+			{#if errors.bestTolerance}<span class="err">{errors.bestTolerance}</span>{/if}
+		</div>
+	</div>
 	<div class="field" class:invalid={errors.processes}>
 		<span class="label" id="proc-label">What work does your factory do in-house? <span class="req">*</span></span>
 		<span class="hint">Open a shop and tick everything you do yourself, or use the search box (e.g. VMC, wire cut, powder coating). Buyers only see requirements that match what you tick.</span>
@@ -127,17 +194,18 @@
 		</div>
 		{#if errors.materials}<span class="err">{errors.materials}</span>{/if}
 	</div>
-	<div class="field">
-		<span class="label" id="ind-label">Industries you supply</span>
+	<div class="field" class:invalid={errors.industries}>
+		<span class="label" id="ind-label">Industries you supply <span class="req">*</span></span>
 		<span class="hint">Helps buyers in your industry find you first.</span>
 		<div class="checks" role="group" aria-labelledby="ind-label">
 			{#each INDUSTRIES as i (i.id)}
 				<label><input type="checkbox" name="industries" value={i.id} checked={values.industries?.includes(i.id)} /> {i.label}</label>
 			{/each}
 		</div>
+		{#if errors.industries}<span class="err">{errors.industries}</span>{/if}
 	</div>
 
-	<div class="field" class:invalid={errors.machines}>
+	<div class="field" class:invalid={errors.machines} id="machines">
 		<span class="label">Machine list <span class="req">*</span></span>
 		<span class="hint">Make & model where possible. Our inspector checks these on the shop floor.</span>
 		{#each machines as m, i}
@@ -152,7 +220,18 @@
 	</div>
 </fieldset>
 
-<fieldset>
+{#if editing}
+	<fieldset id="photos">
+		<legend>Shop-floor photos</legend>
+		<div class="field" class:invalid={errors.factoryPhotos}>
+			<label for="factoryPhotos">Add more photos <span class="tiny muted">({photoCount} of {maxPhotos} on file)</span></label>
+			<input id="factoryPhotos" name="factoryPhotos" type="file" accept=".jpg,.jpeg,.png,.webp" multiple disabled={photoCount >= maxPhotos} />
+			<span class="hint">Machines, shop floor, finished parts. JPG/PNG/WebP, max 5 MB each. Profiles with 3+ photos get more buyer trust.</span>
+			{#if errors.factoryPhotos}<span class="err">{errors.factoryPhotos}</span>{/if}
+		</div>
+	</fieldset>
+{:else}
+<fieldset id="photos">
 	<legend>Documents {docsRequired ? '' : '(optional for team onboarding)'}</legend>
 	<div class="form-grid">
 		<div class="field" class:invalid={errors.gstCertificate}>
@@ -169,12 +248,17 @@
 		<div class="field full" class:invalid={errors.factoryPhotos}>
 			<label for="factoryPhotos">Shop-floor photos showing machines {#if docsRequired}<span class="req">*</span>{/if}</label>
 			<input id="factoryPhotos" name="factoryPhotos" type="file" accept=".jpg,.jpeg,.png,.webp" multiple />
-			<span class="hint">Up to 10 photos, max 5 MB each. (Demo: only file names are stored.)</span>
+			<span class="hint">Up to 10 photos, max 5 MB each. 3 or more photos complete your profile.</span>
 			{#if errors.factoryPhotos}<span class="err">{errors.factoryPhotos}</span>{/if}
 		</div>
 	</div>
 </fieldset>
+{/if}
 
 <style>
 	.machine-row { display: grid; grid-template-columns: 1fr 90px auto; gap: 8px; margin-bottom: 6px; }
+	fieldset { scroll-margin-top: 90px; }
+	.field { scroll-margin-top: 90px; }
+	.locked-note { margin: 0 0 10px; }
+	.mt-xs { margin-top: 6px; }
 </style>

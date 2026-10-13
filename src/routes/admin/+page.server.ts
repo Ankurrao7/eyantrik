@@ -3,17 +3,25 @@ import { fail, redirect } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth.ts';
 import { db, nextId, now, sellerRating, type HelpStatus } from '#lib/server/db.ts';
 import { findSellerById, insertSeller, listSellers, nextSellerId, uniqueSlug, updateSeller } from '#lib/server/sellers.ts';
-import { parseSellerForm } from '#lib/server/sellerForm.ts';
+import { attributeFields, parseSellerForm } from '#lib/server/sellerForm.ts';
 import { normalizeEmail } from '#lib/server/auth.ts';
 import { hashPassword, passwordProblem } from '#lib/server/password.ts';
-import { countUsers, findUserByEmail, findUserByPhone, insertUser, nextUserId, updateUser, usersById } from '#lib/server/users.ts';
+import { countUsers, findUserByEmail, findUserByPhone, insertUser, listUsersByRole, nextUserId, updateUser, usersById } from '#lib/server/users.ts';
+import { isActive } from '#lib/server/accounts.ts';
+import type { AccountStatus } from '#lib/server/db.ts';
+import type { VerificationStatus } from '#lib/taxonomy.ts';
+import { profileScore } from '#lib/profileScore.ts';
+import { shopLabel } from '#lib/processes.ts';
 import { notify, notifySeller } from '#lib/server/notify.ts';
 import { interestedCount, isLive, latest } from '#lib/server/quotes.ts';
 import { landed } from '#lib/quote.ts';
 import { ORDER_STAGES, ORDER_STAGE_LABEL } from '#lib/orders.ts';
 import type { Actions, PageServerLoad } from './$types';
 
-const TABS = ['queue', 'overview', 'requirements', 'add-seller', 'helpdesk', 'concierge', 'activity'] as const;
+const TABS = ['queue', 'overview', 'suppliers', 'buyers', 'requirements', 'add-seller', 'helpdesk', 'concierge', 'activity'] as const;
+/** Suppliers tab filter: a verification stage, or accounts the team switched off. */
+const SUPPLIER_FILTERS = ['ALL', 'DOCS_SUBMITTED', 'DOCS_VERIFIED', 'GROUND_VERIFIED', 'REJECTED', 'OFF'] as const;
+type SupplierFilter = (typeof SUPPLIER_FILTERS)[number];
 type Tab = (typeof TABS)[number];
 
 const DAY = 86_400_000;
@@ -34,6 +42,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	requireUser(locals, url, ['ADMIN']);
 	const tabParam = url.searchParams.get('tab') as Tab | null;
 	const tab: Tab = tabParam && TABS.includes(tabParam) ? tabParam : 'queue';
+	const statusParam = url.searchParams.get('status') as SupplierFilter | null;
+	const supplierFilter: SupplierFilter = statusParam && SUPPLIER_FILTERS.includes(statusParam) ? statusParam : 'ALL';
 
 	// Users live in MongoDB: fetch everyone this page mentions in one query, then look up by id.
 	const people = await usersById([...db.contacts.flatMap((c) => [c.fromUserId, c.toBuyerUserId]), ...db.rfqs.map((r) => r.buyerUserId)]);
@@ -73,6 +83,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	const H = 3_600_000;
 	const queue: QueueItem[] = [];
 	for (const sl of allSellers) {
+		if (!isActive(sl)) continue; // suspended / deactivated: nothing to do until reactivated
 		const at = sl.submittedAt ?? sl.createdAt;
 		if (sl.verification === 'DOCS_SUBMITTED')
 			queue.push({ type: 'DOCS', id: sl.id, title: sl.companyName, sub: `${sl.city}, ${sl.state} · GSTIN ${sl.gstin} · ${sl.documents.length} document${sl.documents.length === 1 ? '' : 's'}`, at, href: `/admin/review/seller/${sl.id}`, cta: 'Review documents' });
@@ -81,7 +92,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	}
 	for (const t of db.tickets.filter((t) => t.status === 'NEW' || t.status === 'CONTACTED'))
 		queue.push({ type: 'HELP', id: t.id, title: `${t.name}${t.companyName ? ` · ${t.companyName}` : ''}`, sub: `${t.status === 'NEW' ? 'New' : 'Contacted'} · ${t.message.slice(0, 90)}${t.message.length > 90 ? '…' : ''}`, at: t.createdAt, href: `/admin?tab=helpdesk#${t.id}`, cta: 'Open request', phone: t.phone });
-	for (const r of db.rfqs.filter((r) => r.status === 'OPEN')) {
+	for (const r of db.rfqs.filter((r) => r.status === 'OPEN' && !r.hidden)) {
 		const buyer = people.get(r.buyerUserId);
 		const title = String(r.values.partName ?? r.id);
 		const liveQuotes = db.quotes.filter((q) => q.rfqId === r.id && isLive(q) && q.versions.length).length;
@@ -130,6 +141,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			createdAt: r.createdAt,
 			salesCalledAt: r.salesCalledAt ?? null,
 			salesNote: r.salesNote ?? '',
+			buyerUserId: r.buyerUserId,
+			buyerOnHold: !!r.hidden,
 			// files the admin can open: buyer's drawings + every seller's quotation attachments
 			files: [
 				...(r.files.drawings ?? []).map((f) => ({ label: `Drawing: ${f.name}`, url: f.fileId ? `/admin/files/${f.fileId}` : null })),
@@ -138,9 +151,66 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		};
 	});
 
+	// ---------- Suppliers: every company at every stage, full contact details (admin only) ----------
+	const suppliers = allSellers
+		.map((sl) => {
+			const quotes = db.quotes.filter((q) => q.sellerId === sl.id && q.versions.length);
+			return {
+				id: sl.id,
+				companyName: sl.companyName,
+				city: sl.city,
+				state: sl.state,
+				contactPerson: sl.contactPerson,
+				phone: sl.phone,
+				whatsapp: sl.whatsapp,
+				email: sl.email ?? '',
+				gstin: sl.gstin,
+				verification: sl.verification as VerificationStatus,
+				mainShop: sl.mainShop ? shopLabel(sl.mainShop) : '',
+				profilePct: profileScore(sl).percent,
+				accountStatus: (sl.accountStatus ?? 'ACTIVE') as AccountStatus,
+				onboardedBy: sl.onboardedBy,
+				documents: sl.documents.length,
+				quotes: quotes.length,
+				won: quotes.filter((q) => q.status === 'ACCEPTED').length,
+				rating: sellerRating(sl),
+				reviewCount: sl.reviewCount,
+				createdAt: sl.createdAt
+			};
+		})
+		.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+	const supplierCounts = Object.fromEntries(
+		SUPPLIER_FILTERS.map((f) => [f, f === 'ALL' ? suppliers.length : f === 'OFF' ? suppliers.filter((x) => x.accountStatus !== 'ACTIVE').length : suppliers.filter((x) => x.verification === f && x.accountStatus === 'ACTIVE').length])
+	) as Record<SupplierFilter, number>;
+
+	// ---------- Buyers: every buyer account with what they did on the platform ----------
+	const buyers = (await listUsersByRole('BUYER')).map((u) => {
+		const rfqs = db.rfqs.filter((r) => r.buyerUserId === u.id);
+		const rfqIds = new Set(rfqs.map((r) => r.id));
+		return {
+			id: u.id,
+			name: u.name,
+			companyName: u.companyName,
+			phone: u.phone,
+			email: u.email ?? '',
+			accountStatus: (u.accountStatus ?? 'ACTIVE') as AccountStatus,
+			createdAt: u.createdAt,
+			rfqs: rfqs.length,
+			openRfqs: rfqs.filter((r) => r.status === 'OPEN').length,
+			quotes: db.quotes.filter((q) => rfqIds.has(q.rfqId) && q.versions.length).length,
+			awarded: rfqs.filter((r) => r.awardedQuoteId).length,
+			tickets: db.tickets.filter((t) => t.userId === u.id).length
+		};
+	});
+
 	const jobId = url.searchParams.get('job');
 	return {
 		tab,
+		supplierFilter,
+		supplierFilters: SUPPLIER_FILTERS,
+		supplierCounts,
+		suppliers,
+		buyers,
 		kpis,
 		queue,
 		tickets,
@@ -149,7 +219,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		activity,
 		requirements,
 		orderStages: ORDER_STAGES.map((s) => ({ id: s.id, label: s.label })),
-		partners: allSellers.filter((s) => s.verification !== 'REJECTED' && s.verification !== 'DOCS_SUBMITTED').map((s) => ({ id: s.id, name: s.companyName, isPlant: !!s.isEyantrikPlant }))
+		partners: allSellers.filter((s) => isActive(s) && s.verification !== 'REJECTED' && s.verification !== 'DOCS_SUBMITTED').map((s) => ({ id: s.id, name: s.companyName, isPlant: !!s.isEyantrikPlant }))
 	};
 };
 
@@ -237,6 +307,7 @@ export const actions: Actions = {
 			industries: input.industries,
 			machines: clean.machines,
 			certifications: clean.certifications,
+			...attributeFields(input),
 			verification: 'GROUND_VERIFIED',
 			onboardedBy: 'TEAM',
 			documents: clean.documents,

@@ -2,17 +2,15 @@ import { error } from '@sveltejs/kit';
 import { canSeeSellerContacts, sellerContactLock } from '#lib/server/auth.ts';
 import { db } from '#lib/server/db.ts';
 import { toPublicSeller } from '#lib/server/matching.ts';
-import { findSellerBySlug } from '#lib/server/sellers.ts';
-import { LISTED_STATUSES } from '#lib/taxonomy.ts';
+import { findSellerBySlug, isListed } from '#lib/server/sellers.ts';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
 	const seller = await findSellerBySlug(params.slug);
 	const isOwner = !!seller && locals.sessions.SELLER?.sellerId === seller.id;
-	const isAdmin = locals.user?.role === 'ADMIN';
-
-	// Unlisted (pending/rejected) profiles are only visible to their owner and admins.
-	if (!seller || (!LISTED_STATUSES.includes(seller.verification) && !isOwner && !isAdmin)) {
+	// Unlisted (pending/rejected) profiles are only visible to their owner; suspended ones to no one here
+	// (the admin team sees every supplier in the admin console, never through this public page).
+	if (!seller || (!isListed(seller) && !(isOwner && !seller.accountStatus))) {
 		error(404, 'Supplier not found');
 	}
 

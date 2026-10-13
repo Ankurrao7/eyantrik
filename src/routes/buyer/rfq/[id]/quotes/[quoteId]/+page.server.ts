@@ -1,4 +1,5 @@
 import { error, fail, redirect } from '@sveltejs/kit';
+import { isActive } from '#lib/server/accounts.ts';
 import { canSeeSellerContacts } from '#lib/server/auth.ts';
 import { award, counterOffer, declineQuote, ownQuote, shortlist } from '#lib/server/buyerQuotes.ts';
 import { scoreMatch, toPublicSeller } from '#lib/server/matching.ts';
@@ -10,7 +11,7 @@ import type { Actions, PageServerLoad } from './$types';
 export const load: PageServerLoad = async ({ params, locals, url }) => {
 	const { user, rfq, quote } = ownQuote(locals, url, params.id, params.quoteId);
 	const seller = await findSellerById(quote.sellerId);
-	if (!seller) error(404, 'This supplier is no longer on eYantrik.');
+	if (!seller || !isActive(seller)) error(404, 'This supplier is no longer on eYantrik.');
 	const m = scoreMatch(seller, rfq);
 	const live = quotesForRfq(rfq.id).filter((q) => isLive(q) && q.versions.length);
 	const rank = [...live].sort((a, b) => landed(latest(a)).perPiece - landed(latest(b)).perPiece).findIndex((q) => q.id === quote.id);

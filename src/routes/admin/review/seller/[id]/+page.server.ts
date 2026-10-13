@@ -1,8 +1,18 @@
-// Seller verification review: details + automatic checks + documents + decision, in one screen.
+// Supplier file for the admin team — every company at every stage (pending, verified, sent back, suspended):
+// full details + contacts (never blurred) + documents + verification decision + platform activity + account control.
 // Every decision is re-checked here on the server (the checklist can't be skipped by editing the page).
+// The admin never edits the supplier's details — those are entered and updated by the supplier only.
 import { error, fail } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth.ts';
-import { now, type VerificationEvent } from '#lib/server/db.ts';
+import { db, now, sellerRating, type VerificationEvent } from '#lib/server/db.ts';
+import { parseStatusForm, setSellerStatus } from '#lib/server/accounts.ts';
+import { scoreMatch } from '#lib/server/matching.ts';
+import { latest } from '#lib/server/quotes.ts';
+import { landed } from '#lib/quote.ts';
+import { profileScore } from '#lib/profileScore.ts';
+import { shopLabel } from '#lib/processes.ts';
+import { ORDER_TYPE_LABEL, PART_SIZE_LABEL, TEAM_SIZE_LABEL, TOLERANCE_LABEL } from '#lib/taxonomy.ts';
+import { usersById } from '#lib/server/users.ts';
 import { notifySeller } from '#lib/server/notify.ts';
 import { findSellerById, updateSeller } from '#lib/server/sellers.ts';
 import { findUserById } from '#lib/server/users.ts';
@@ -20,6 +30,33 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
 	requireUser(locals, url, ['ADMIN']);
 	const s = await loadSeller(params.id);
 	const owner = s.userId ? await findUserById(s.userId) : null;
+
+	// ---- What this supplier did on the platform ----
+	const quotes = db.quotes.filter((q) => q.sellerId === s.id && q.versions.length);
+	const rfqTitle = (id: string) => String(db.rfqs.find((r) => r.id === id)?.values.partName ?? id);
+	const received = db.contacts.filter((c) => c.toSellerId === s.id);
+	const made = owner ? db.contacts.filter((c) => c.fromUserId === owner.id && c.toBuyerUserId) : [];
+	const people = await usersById([...received.map((c) => c.fromUserId), ...made.map((c) => c.toBuyerUserId)]);
+	const personName = (id?: string) => {
+		const u = id ? people.get(id) : undefined;
+		return u ? `${u.name}${u.companyName ? ` · ${u.companyName}` : ''}` : '—';
+	};
+	const activity = {
+		matchedOpen: db.rfqs.filter((r) => r.status === 'OPEN' && !r.hidden && scoreMatch(s, r).score > 0).length,
+		interested: db.responses.filter((r) => r.sellerId === s.id && r.kind === 'INTERESTED').length,
+		passed: db.responses.filter((r) => r.sellerId === s.id && r.kind === 'NOT_FOR_US').length,
+		quotes: quotes.map((q) => ({ id: q.id, rfqId: q.rfqId, title: rfqTitle(q.rfqId), status: q.status, version: latest(q).v, perPiece: landed(latest(q)).perPiece, updatedAt: q.updatedAt })),
+		won: quotes.filter((q) => q.status === 'ACCEPTED').length,
+		contactsIn: received.slice(-20).reverse().map((c) => ({ id: c.id, at: c.at, channel: c.channel, rfqId: c.rfqId, who: personName(c.fromUserId) })),
+		contactsInTotal: received.length,
+		contactsOut: made.slice(-20).reverse().map((c) => ({ id: c.id, at: c.at, channel: c.channel, rfqId: c.rfqId, who: personName(c.toBuyerUserId) })),
+		contactsOutTotal: made.length,
+		rating: sellerRating(s),
+		reviewCount: s.reviewCount,
+		reviews: db.feedback.filter((f) => f.sellerId === s.id).slice(-10).reverse().map((f) => ({ id: f.id, rating: f.rating, comment: f.comment, outcome: f.outcome, at: f.at, buyer: personName(f.buyerUserId) })),
+		tickets: owner ? db.tickets.filter((t) => t.userId === owner.id).map((t) => ({ id: t.id, status: t.status, message: t.message, createdAt: t.createdAt })) : []
+	};
+
 	return {
 		seller: {
 			...s,
@@ -27,9 +64,19 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
 			materialLabels: s.materials.map((m) => MATERIAL_CATEGORY_LABEL[m] ?? m),
 			industryLabels: s.industries.map((i) => INDUSTRY_LABEL[i] ?? i),
 			documents: s.documents.map((d) => ({ ...d, url: d.fileId ? `/admin/files/${d.fileId}` : null })),
-			history: [...(s.verificationLog ?? [])].reverse()
+			history: [...(s.verificationLog ?? [])].reverse(),
+			attributes: {
+				mainShop: s.mainShop ? shopLabel(s.mainShop) : '',
+				orderTypes: (s.orderTypes ?? []).map((o) => ORDER_TYPE_LABEL[o] ?? o),
+				teamSize: s.teamSize ? TEAM_SIZE_LABEL[s.teamSize] : '',
+				maxPartSize: s.maxPartSize ? PART_SIZE_LABEL[s.maxPartSize] : '',
+				bestTolerance: s.bestTolerance ? TOLERANCE_LABEL[s.bestTolerance] : ''
+			}
 		},
-		owner: owner ? { name: owner.name, phone: owner.phone, email: owner.email ?? '', createdAt: owner.createdAt } : null,
+		profile: profileScore(s),
+		owner: owner ? { id: owner.id, name: owner.name, phone: owner.phone, email: owner.email ?? '', createdAt: owner.createdAt, accountLog: owner.accountLog ?? [] } : null,
+		account: { status: s.accountStatus ?? ('ACTIVE' as const), reason: s.accountStatusReason ?? '' },
+		activity,
 		checks: await autoChecks(s),
 		reviewChecks: REVIEW_CHECKS,
 		visitChecks: VISIT_CHECKS,
@@ -96,6 +143,18 @@ export const actions: Actions = {
 		});
 		await notifySeller(s.id, { type: 'VERIFICATION', title: 'Ground verified ✓✓', body: 'Your factory inspection is complete. You now rank higher for buyers.', link: '/seller' });
 		return { message: `${s.companyName} is now ground verified.` };
+	},
+
+	// Suspend / deactivate / reactivate the listing and its owner's seller login (details are never edited here).
+	setStatus: async ({ params, request, locals, url }) => {
+		const admin = requireUser(locals, url, ['ADMIN']);
+		const s = await loadSeller(params.id);
+		const parsed = parseStatusForm(await request.formData());
+		if (!parsed.ok) return fail(400, { error: parsed.error });
+		if ((s.accountStatus ?? 'ACTIVE') === parsed.status) return fail(409, { error: 'The account is already in that state.' });
+		await setSellerStatus(s.id, { status: parsed.status, reason: parsed.reason, by: admin.name });
+		const done = parsed.status === 'ACTIVE' ? 'reactivated — listed and receiving leads again' : parsed.status === 'SUSPENDED' ? 'suspended — hidden from buyers and signed out' : 'deactivated — hidden from buyers and signed out';
+		return { message: `${s.companyName} ${done}.` };
 	},
 
 	note: async ({ params, request, locals, url }) => {

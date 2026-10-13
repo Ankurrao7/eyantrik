@@ -19,12 +19,21 @@
 import { error, redirect, type Cookies } from '@sveltejs/kit';
 import { db, type Role, type User } from './db.ts';
 import { hashPassword, verifyPassword } from './password.ts';
+import { blockedLoginMessage, isActive } from './accounts.ts';
 import { findSellerById } from './sellers.ts';
 import { findUserByEmail, findUserById, findUserByPhone, loginAttempts, sessions } from './users.ts';
 
 export const SESSION_COOKIE: Record<Role, string> = { BUYER: 'ey_buyer', SELLER: 'ey_seller', ADMIN: 'ey_admin' };
 /** Which side (buyer/seller) shared pages show when both are signed in. Not a secret — just a preference. */
 export const ACTIVE_COOKIE = 'ey_active';
+/**
+ * The workspace ("lane") of the tab in front of the user — ADMIN, BUYER or SELLER — written by the page
+ * itself (src/lib/tabSide.svelte.ts). Not a secret and grants nothing: it only picks WHICH of this
+ * browser's existing logins a shared page may use (and an admin tab uses none of them).
+ */
+export const LANE_COOKIE = 'ey_lane';
+export type Lane = 'ADMIN' | 'BUYER' | 'SELLER';
+export const readLane = (v: string | undefined): Lane | null => (v === 'ADMIN' || v === 'BUYER' || v === 'SELLER' ? v : null);
 const USER_TTL_S = 60 * 60 * 24 * 7;
 const ADMIN_TTL_S = 60 * 60 * 8;
 const MAX_FAILS = 5;
@@ -112,7 +121,8 @@ async function sessionUser(sid: string, role: Role): Promise<User | null> {
 	// Read the user fresh on every request: a user deleted or changed in the database takes effect at once.
 	const user = await findUserById(s.userId);
 	// A session can never cross roles, even if a cookie were copied into another cookie name.
-	return user && user.role === role ? user : null;
+	// A suspended/deactivated account is signed out on its next request (its sessions are also deleted).
+	return user && user.role === role && isActive(user) ? user : null;
 }
 
 /** Everyone signed in through this browser. The admin cookie only exists on /admin URLs, so it's only read there. */
@@ -130,10 +140,13 @@ export async function resolveSessions(cookies: Cookies, pathname: string): Promi
 
 /**
  * Which signed-in identity this request acts as. The URL decides, so tabs never interfere:
- * /admin… → admin · /buyer… and /rfq/new → buyer · /seller… → seller ·
- * /api/…?as=BUYER|SELLER → that side · anything else → the side used last, else whoever is signed in.
+ * /admin… → admin · /buyer… and /rfq/new → buyer · /seller… → seller · /api/…?as=BUYER|SELLER → that side.
+ * Anything else (shared pages: home, directory, help…) follows the tab's lane:
+ *   ADMIN tab → nobody (the public site is seen as a visitor — never as the browser's buyer/seller login)
+ *   BUYER / SELLER tab → that account only (never falls back to the other one)
+ *   no lane yet → the side used last, else whoever is signed in.
  */
-export function identityFor(url: URL, signedIn: Sessions, active: string | undefined): Role | null {
+export function identityFor(url: URL, signedIn: Sessions, active: string | undefined, lane: Lane | null = null): Role | null {
 	const path = url.pathname;
 	const under = (p: string) => path === p || path.startsWith(p + '/');
 	if (under('/admin')) return 'ADMIN';
@@ -141,8 +154,25 @@ export function identityFor(url: URL, signedIn: Sessions, active: string | undef
 	if (under('/seller')) return 'SELLER';
 	const as = url.searchParams.get('as');
 	if (under('/api') && (as === 'BUYER' || as === 'SELLER')) return as;
+	if (lane === 'ADMIN') return null;
+	if (lane) return signedIn[lane] ? lane : null;
 	if ((active === 'BUYER' || active === 'SELLER') && signedIn[active]) return active;
 	return signedIn.BUYER ? 'BUYER' : signedIn.SELLER ? 'SELLER' : null;
+}
+
+/**
+ * Which of the browser's buyer/seller logins a request may SEE (`locals.sessions`).
+ *  • /admin… → none: admin screens never receive buyer/seller data.
+ *  • shared pages in an ADMIN tab → none; in a BUYER/SELLER tab → only that one.
+ *  • role areas, login portals, logout, denied, API → both (needed for "Switch to…", sign-up pre-fill, logout).
+ */
+export function visibleSessions(pathname: string, signedIn: Sessions, lane: Lane | null): { BUYER: User | null; SELLER: User | null } {
+	const under = (p: string) => pathname === p || pathname.startsWith(p + '/');
+	if (under('/admin')) return { BUYER: null, SELLER: null };
+	const roleArea = ['/buyer', '/seller', '/rfq/new', '/login', '/logout', '/denied', '/api'].some(under);
+	if (roleArea || !lane) return { BUYER: signedIn.BUYER, SELLER: signedIn.SELLER };
+	if (lane === 'ADMIN') return { BUYER: null, SELLER: null };
+	return { BUYER: lane === 'BUYER' ? signedIn.BUYER : null, SELLER: lane === 'SELLER' ? signedIn.SELLER : null };
 }
 
 // ---------------- Login ----------------
@@ -192,6 +222,8 @@ export async function authenticate(portal: Portal, loginId: string, password: st
 		};
 	}
 	await loginAttempts.deleteOne({ _id: key });
+	// Right password, but the admin team has suspended or deactivated this account.
+	if (!isActive(user)) return { ok: false, error: blockedLoginMessage(user) };
 
 	return { ok: true, user };
 }
@@ -275,5 +307,5 @@ export async function canSeeBuyerContacts(user: User | null): Promise<boolean> {
 	if (user.role === 'ADMIN') return true;
 	if (user.role !== 'SELLER' || !user.sellerId) return false;
 	const seller = await findSellerById(user.sellerId);
-	return !!seller && (seller.verification === 'DOCS_VERIFIED' || seller.verification === 'GROUND_VERIFIED');
+	return !!seller && isActive(seller) && (seller.verification === 'DOCS_VERIFIED' || seller.verification === 'GROUND_VERIFIED');
 }

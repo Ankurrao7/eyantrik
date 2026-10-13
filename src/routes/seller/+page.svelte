@@ -3,6 +3,7 @@
 	import { enhance } from '$app/forms';
 	import LatestUpdates from '#lib/components/LatestUpdates.svelte';
 	import VerificationBadge from '#lib/components/VerificationBadge.svelte';
+	import ProfileRing from '#lib/components/ProfileRing.svelte';
 	import { PIN_ZONES, PIN_ZONE_LABEL } from '#lib/geo.ts';
 	import { inr, QUOTE_STATUS_CLASS, QUOTE_STATUS_LABEL } from '#lib/quote.ts';
 	import { BUDGET_LABEL, PROCESS_LABEL, TIMELINE_LABEL } from '#lib/taxonomy.ts';
@@ -45,6 +46,7 @@
 			<div class="row gap mt"><VerificationBadge status={s.verification} />{#if s.rating}<span class="small">★ {s.rating} ({s.reviewCount})</span>{/if}</div>
 		</div>
 		<div class="row gap">
+			<a class="btn ghost" href="/seller/profile">✏️ My profile</a>
 			<a class="btn ghost" href="/seller/settings">⚙️ Quote defaults</a>
 			<a class="btn ghost" href="/sellers/{s.slug}">Public profile</a>
 			<a class="btn dark" href="/help">🤝 Help desk</a>
@@ -56,6 +58,17 @@
 	{#if form && 'error' in form && form.error}<div class="alert bad mt" role="alert">{form.error}</div>{/if}
 	{#if form && 'interestedIn' in form}<div class="alert ok mt">Marked interested in {form.interestedIn} — the buyer has been notified. {#if data.verified}Send your quotation from the Interested tab.{/if}</div>{/if}
 	{#if form && 'hidden' in form}<div class="alert info mt">Got it — {form.hidden} is hidden. Thanks for telling us why; it improves your future leads.</div>{/if}
+
+	{#if data.profile.percent < 100}
+		<a class="card profile-nudge mt" href="/seller/profile">
+			<ProfileRing percent={data.profile.percent} size={64} stroke={6} />
+			<div class="pn-main">
+				<strong>Your profile is {data.profile.percent}% complete — complete it to meet more leads</strong>
+				<span class="small muted">Complete profiles rank higher when buyers' requirements are matched. Next: {data.profile.missing.map((m) => m.label.toLowerCase()).join(' · ')}{data.profile.missingCount > 3 ? ` +${data.profile.missingCount - 3} more` : ''}.</span>
+			</div>
+			<span class="btn ok sm">Complete profile →</span>
+		</a>
+	{/if}
 
 	<div class="grid four mt">
 		<div class="stat"><div class="v">{data.counts.matched}</div><div class="k">New matched leads</div></div>
@@ -179,4 +192,8 @@
 	.dot { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line-2); display: grid; place-items: center; font-size: 0.75rem; }
 	.done .dot { background: var(--ok); border-color: var(--ok); color: #fff; }
 	.pass { background: #f8fafc; border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+	.profile-nudge { display: flex; gap: 16px; align-items: center; text-decoration: none; color: inherit; border-left: 4px solid var(--ok); }
+	.profile-nudge:hover { border-color: var(--ok); box-shadow: var(--shadow); }
+	.pn-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+	@media (max-width: 640px) { .profile-nudge { flex-wrap: wrap; } }
 </style>
