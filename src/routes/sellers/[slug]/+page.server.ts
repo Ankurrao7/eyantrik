@@ -1,9 +1,11 @@
-import { error } from '@sveltejs/kit';
-import { canSeeSellerContacts, sellerContactLock } from '#lib/server/auth.ts';
-import { db } from '#lib/server/db.ts';
+import { error, fail } from '@sveltejs/kit';
+import { sellerContactLock } from '#lib/server/auth.ts';
+import { db, isInvited } from '#lib/server/db.ts';
+import { inviteChosen } from '#lib/server/invites.ts';
 import { toPublicSeller } from '#lib/server/matching.ts';
 import { findSellerBySlug, isListed } from '#lib/server/sellers.ts';
-import type { PageServerLoad } from './$types';
+import { isQuotingOpen } from '#lib/server/quotes.ts';
+import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
 	const seller = await findSellerBySlug(params.slug);
@@ -17,8 +19,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	const buyerOpenRfqs =
 		locals.sessions.BUYER
 			? db.rfqs
-					.filter((r) => r.buyerUserId === locals.sessions.BUYER!.id && r.status === 'OPEN')
-					.map((r) => ({ id: r.id, title: String(r.values.partName ?? r.id) }))
+					.filter((r) => r.buyerUserId === locals.sessions.BUYER!.id && !r.hidden && isQuotingOpen(r))
+					.map((r) => ({ id: r.id, title: String(r.values.partName ?? r.id), asked: isInvited(r, seller.id) }))
 			: [];
 
 	const reviews = db.feedback
@@ -28,10 +30,26 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		.map((f) => ({ rating: f.rating, comment: f.comment, at: f.at, outcome: f.outcome }));
 
 	return {
-		seller: toPublicSeller(seller, canSeeSellerContacts(locals.sessions.BUYER) || isOwner),
+		// contacts only for the owner: buyers get them when they shortlist this supplier's quote
+		seller: toPublicSeller(seller, isOwner),
 		lockReason: sellerContactLock(locals.sessions.BUYER ?? locals.user),
 		isOwner,
 		buyerOpenRfqs,
 		reviews
 	};
+};
+
+export const actions: Actions = {
+	// Buyer asks this supplier to quote on one of their open requirements (invites it, see invites.ts).
+	invite: async ({ params, locals, request }) => {
+		const buyer = locals.sessions.BUYER;
+		if (!buyer) return fail(403, { error: 'Log in with your buyer account to ask for a quote.' });
+		const seller = await findSellerBySlug(params.slug);
+		if (!seller || !isListed(seller)) return fail(404, { error: 'Supplier not found.' });
+		const rfqId = (await request.formData()).get('rfqId')?.toString();
+		const rfq = db.rfqs.find((r) => r.id === rfqId && r.buyerUserId === buyer.id);
+		if (!rfq) return fail(400, { error: 'Choose one of your open requirements.' });
+		const err = inviteChosen(rfq, seller);
+		return err ? fail(409, { error: err }) : { message: `${seller.companyName} has been asked to quote on ${rfq.values.partName}. Their quote will appear on your requirement page.` };
+	}
 };

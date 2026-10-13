@@ -62,7 +62,7 @@
 	const icon: Record<string, string> = {
 		NEW_LEAD: '📥', LEAD_TEASER: '🔒', INTERESTED: '👋', QUOTE_RECEIVED: '💰', QUOTE_REVISED: '✏️', COUNTER: '🤝',
 		COUNTER_ACCEPTED: '✅', COUNTER_DECLINED: '✖️', SHORTLISTED: '⭐', AWARDED: '🏆', NOT_SELECTED: '📭', DECLINED: '✖️',
-		WITHDRAWN: '↩️', VERIFICATION: '🛡️', RFQ_UPDATED: '🔄', ORDER_UPDATE: '📍'
+		WITHDRAWN: '↩️', VERIFICATION: '🛡️', RFQ_UPDATED: '🔄', ORDER_UPDATE: '📍', MESSAGE: '💬', MORE_INVITED: '📣'
 	};
 </script>
 

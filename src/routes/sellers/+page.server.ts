@@ -1,4 +1,4 @@
-import { canSeeSellerContacts, sellerContactLock } from '#lib/server/auth.ts';
+import { sellerContactLock } from '#lib/server/auth.ts';
 import { sellerRating } from '#lib/server/db.ts';
 import type { Filter } from 'mongodb';
 import type { Seller } from '#lib/server/db.ts';
@@ -53,11 +53,10 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 
 	const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
 	const current = Math.min(pageNo, totalPages);
-	const showContacts = canSeeSellerContacts(locals.sessions.BUYER);
 
 	return {
 		filters: { q, process, state, groundOnly },
-		sellers: filtered.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE).map((s) => toPublicSeller(s, showContacts)),
+		sellers: filtered.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE).map((s) => toPublicSeller(s, false)), // contacts: only after a shortlist
 		total: filtered.length,
 		page: current,
 		totalPages,

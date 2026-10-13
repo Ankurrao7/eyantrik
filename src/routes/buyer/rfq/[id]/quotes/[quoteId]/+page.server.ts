@@ -1,15 +1,17 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { isActive } from '#lib/server/accounts.ts';
-import { canSeeSellerContacts } from '#lib/server/auth.ts';
+import { contactsShared } from '#lib/server/auth.ts';
 import { award, counterOffer, declineQuote, ownQuote, shortlist } from '#lib/server/buyerQuotes.ts';
 import { scoreMatch, toPublicSeller } from '#lib/server/matching.ts';
 import { buyerInsights, counterRounds, isLive, latest, pendingCounter, quotesForRfq } from '#lib/server/quotes.ts';
 import { findSellerById } from '#lib/server/sellers.ts';
+import { messageCount } from '#lib/server/messages.ts';
 import { landed, MAX_COUNTER_ROUNDS } from '#lib/quote.ts';
+import { showText } from '#lib/contactMask.ts';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, locals, url }) => {
-	const { user, rfq, quote } = ownQuote(locals, url, params.id, params.quoteId);
+	const { rfq, quote } = ownQuote(locals, url, params.id, params.quoteId);
 	const seller = await findSellerById(quote.sellerId);
 	if (!seller || !isActive(seller)) error(404, 'This supplier is no longer on eYantrik.');
 	const m = scoreMatch(seller, rfq);
@@ -17,11 +19,19 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
 	const rank = [...live].sort((a, b) => landed(latest(a)).perPiece - landed(latest(b)).perPiece).findIndex((q) => q.id === quote.id);
 	const rounds = counterRounds(quote);
 	const open = rfq.status === 'OPEN' && isLive(quote) && quote.status !== 'ACCEPTED';
+	// free text from the supplier hides contacts until this quote is shortlisted
+	const shared = contactsShared(rfq, seller.id);
 
 	return {
 		rfq: { id: rfq.id, title: String(rfq.values.partName ?? rfq.id), quantity: String(rfq.values.quantity ?? ''), status: rfq.status, values: rfq.values },
-		quote: { id: quote.id, status: quote.status, versions: quote.versions.map((v) => ({ ...v, landed: landed(v) })), thread: quote.thread },
-		seller: toPublicSeller(seller, canSeeSellerContacts(user)),
+		quote: {
+			id: quote.id,
+			status: quote.status,
+			versions: quote.versions.map((v) => ({ ...v, notes: showText(v.notes, shared), landed: landed(v) })),
+			thread: quote.thread.map((e) => (e.message ? { ...e, message: showText(e.message, shared) } : e))
+		},
+		seller: toPublicSeller(seller, shared),
+		messages: messageCount(rfq.id, seller.id),
 		match: { covers: m.covers, distanceKm: m.distanceKm, zone: m.zone },
 		insights: buyerInsights(quote, rfq, seller, quotesForRfq(rfq.id)),
 		priceRank: rank >= 0 ? { rank: rank + 1, of: live.length } : null,
@@ -37,7 +47,7 @@ export const actions: Actions = {
 	shortlist: async ({ params, locals, url }) => {
 		const { rfq, quote } = ownQuote(locals, url, params.id, params.quoteId);
 		const err = await shortlist(rfq, quote);
-		return err ? fail(409, { error: err }) : { message: 'Shortlisted — the supplier has been told.' };
+		return err ? fail(409, { error: err }) : { message: 'Shortlisted — the supplier has been told, and you can now see each other’s phone & WhatsApp.' };
 	},
 	counter: async ({ params, locals, url, request }) => {
 		const { rfq, quote } = ownQuote(locals, url, params.id, params.quoteId);

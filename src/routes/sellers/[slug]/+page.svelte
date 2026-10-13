@@ -1,16 +1,13 @@
 <script lang="ts">
+	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
-	import ContactButtons from '#lib/components/ContactButtons.svelte';
 	import VerificationBadge from '#lib/components/VerificationBadge.svelte';
 	import { INDUSTRY_LABEL, MATERIAL_CATEGORY_LABEL, ORDER_TYPE_LABEL, PART_SIZE_LABEL, PROCESS_LABEL, TEAM_SIZE_LABEL, TOLERANCE_LABEL } from '#lib/taxonomy.ts';
 	import { SHOP_BY_ID } from '#lib/processes.ts';
 
-	let { data } = $props();
+	let { data, form } = $props();
 	const s = $derived(data.seller);
-
-	// Context for the WhatsApp message + contact log when the buyer has open requirements.
-	let selectedRfq = $state('');
-	const rfq = $derived(data.buyerOpenRfqs.find((r) => r.id === selectedRfq));
+	const askable = $derived(data.buyerOpenRfqs.filter((r) => !r.asked));
 
 	const jsonLd = $derived(
 		JSON.stringify({
@@ -74,44 +71,33 @@
 		{/if}
 	</div>
 
-	<div class="card">
-		<h2>Contact</h2>
-		{#if s.contact}
+	<div class="card" id="ask">
+		{#if data.isOwner && s.contact}
+			<h2>Contact</h2>
 			<p class="mb-0"><strong>{s.contact.person}</strong></p>
 			<p class="small muted">{s.contact.address}{#if s.contact.email} · {s.contact.email}{/if}</p>
-			{#if data.isOwner}
-				<p class="small">📞 +91 {s.contact.phone} · WhatsApp +91 {s.contact.whatsapp}</p>
+			<p class="small">📞 +91 {s.contact.phone} · WhatsApp +91 {s.contact.whatsapp}</p>
+			<p class="tiny muted mb-0">Buyers see these only after they shortlist your quote — until then they message you on eYantrik.</p>
+		{:else if data.lockReason !== 'role'}
+			<h2>Get a quote from {s.companyName}</h2>
+			{#if form && 'message' in form && form.message}<div class="alert ok" role="status">{form.message}</div>{/if}
+			{#if form && 'error' in form && form.error}<div class="alert bad" role="alert">{form.error}</div>{/if}
+			{#if data.lockReason === 'buyer' && askable.length}
+				<form method="POST" action="?/invite" use:enhance class="row gap">
+					<select name="rfqId" aria-label="Your requirement" required style="max-width:380px">
+						{#each askable as r (r.id)}<option value={r.id}>{r.id} — {r.title}</option>{/each}
+					</select>
+					<button class="btn">Ask for a quote</button>
+				</form>
+				<p class="tiny muted mt mb-0">They'll see your requirement and can message you or quote on eYantrik.</p>
+			{:else if data.lockReason === 'buyer'}
+				<p class="small">{data.buyerOpenRfqs.length ? 'You already asked them on all your open requirements.' : 'Post your requirement first — then you can ask this supplier to quote on it.'}</p>
+				{#if !data.buyerOpenRfqs.length}<a class="btn sm" href="/rfq/new">Post requirement</a>{/if}
 			{:else}
-				{#if data.buyerOpenRfqs.length}
-					<div class="field" style="max-width:380px">
-						<label for="rfqCtx">Contacting about</label>
-						<select id="rfqCtx" bind:value={selectedRfq}>
-							<option value="">General enquiry</option>
-							{#each data.buyerOpenRfqs as r}<option value={r.id}>{r.id} — {r.title}</option>{/each}
-						</select>
-					</div>
-				{/if}
-				<ContactButtons
-					phone={s.contact.phone}
-					whatsapp={s.contact.whatsapp}
-					sellerId={s.id}
-					rfqId={rfq?.id}
-					message={rfq ? `Hi, I found ${s.companyName} on eYantrik. I need: ${rfq.title} (${rfq.id}).` : `Hi, I found ${s.companyName} on eYantrik.`}
-				/>
-				<p class="tiny muted mt mb-0">Tell them you found them on eYantrik. Deal didn't work out? Leave feedback from your dashboard.</p>
+				<p class="small">Log in free, post your requirement and ask this supplier to quote.</p>
+				<a class="btn sm" href="/login/buyer?redirectTo=%2Frfq%2Fnew">Post requirement</a>
 			{/if}
-		{:else}
-			<div class="locked">
-				<p class="mb-0"><span class="blur">📞 +91 98XXX XXXXX · WhatsApp</span></p>
-				<p class="small mt mb-0">
-					🔒 {#if data.lockReason === 'login'}Login free and post a requirement to see this supplier's phone & WhatsApp.
-					{:else if data.lockReason === 'post-rfq'}Post one requirement to unlock contacts of all suppliers.
-					{:else}Supplier contacts are visible to buyer accounts.{/if}
-				</p>
-				{#if data.lockReason !== 'role'}
-					<a class="btn sm mt" href={data.lockReason === 'login' ? '/login/buyer?redirectTo=%2Frfq%2Fnew' : '/rfq/new'}>Post requirement</a>
-				{/if}
-			</div>
+			<p class="small muted mt mb-0">🔒 Phone & WhatsApp are shared when you shortlist their quote — no cold calls either way.</p>
 		{/if}
 	</div>
 

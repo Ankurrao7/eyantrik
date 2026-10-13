@@ -1,10 +1,12 @@
 // Edit & re-post a requirement. Allowed any time until an order is awarded.
 // If it changes, the chain restarts: active quotes become "needs re-quote", responses reset,
-// a fresh quotation window opens, and sellers are notified (decision 2026-10-07).
+// a fresh quotation window opens, and the invited sellers are notified (decision 2026-10-07);
+// suppliers who no longer match drop out and new matches are invited (invites.ts).
 import { fail, redirect } from '@sveltejs/kit';
 import { ownRfq } from '#lib/server/buyerQuotes.ts';
 import { db, now } from '#lib/server/db.ts';
-import { notifyRfqPosted, notifySeller } from '#lib/server/notify.ts';
+import { reinviteAfterEdit } from '#lib/server/invites.ts';
+import { notifySeller } from '#lib/server/notify.ts';
 import { outdateQuotes } from '#lib/server/quotes.ts';
 import { parseRfqForm, RFQ_FIELDS } from '#lib/rfqFields.ts';
 import { saveFormFiles } from '#lib/server/files.ts';
@@ -67,7 +69,7 @@ export const actions: Actions = {
 				link: `/seller/rfq/${rfq.id}`
 			});
 		}
-		const notified = (await notifyRfqPosted(rfq, 'UPDATED', requote)) + requote.size;
+		const notified = (await reinviteAfterEdit(rfq, requote)) + requote.size;
 		redirect(303, `/buyer/rfq/${rfq.id}?edited=1&notified=${notified}`);
 	}
 };

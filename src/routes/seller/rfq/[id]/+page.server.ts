@@ -1,8 +1,10 @@
 // Seller view of one requirement: full details, NDA, buyer contact, quotation form,
 // and the negotiation thread (respond to counter-offers, revise, withdraw).
 import { error, fail, redirect } from '@sveltejs/kit';
-import { canSeeBuyerContacts, requireUser } from '#lib/server/auth.ts';
-import { db, nextId, now, type Quote, type Seller, type User } from '#lib/server/db.ts';
+import { contactsShared, isVerifiedSeller, requireUser } from '#lib/server/auth.ts';
+import { db, isInvited, nextId, now, type Quote, type Seller, type User } from '#lib/server/db.ts';
+import { canMessage, MESSAGE_MAX, sendMessage, threadFor } from '#lib/server/messages.ts';
+import { maskContacts, showText } from '#lib/contactMask.ts';
 import { buyerOf, scoreMatch } from '#lib/server/matching.ts';
 import { notifyBuyerOf } from '#lib/server/notify.ts';
 import { findSellerById, updateSeller } from '#lib/server/sellers.ts';
@@ -19,8 +21,9 @@ async function ctx(locals: App.Locals, url: URL, rfqId: string): Promise<{ user:
 	if (!seller) redirect(303, '/seller/onboarding');
 	const rfq = db.rfqs.find((r) => r.id === rfqId);
 	const quote = rfq ? db.quotes.find((q) => q.rfqId === rfq.id && q.sellerId === seller.id) : undefined;
-	// Closed requirements stay visible only to sellers who took part. Hidden = the buyer's account is on hold.
-	if (!rfq || ((rfq.status !== 'OPEN' || rfq.hidden) && !quote)) error(404, 'Requirement not found or closed');
+	// Only invited suppliers see a requirement (curated, see invites.ts). Closed requirements stay visible
+	// only to sellers who took part. Hidden = the buyer's account is on hold.
+	if (!rfq || (!isInvited(rfq, seller.id) && !quote) || ((rfq.status !== 'OPEN' || rfq.hidden) && !quote)) error(404, 'Requirement not found or closed');
 	return { user, seller, rfq, quote };
 }
 
@@ -37,12 +40,15 @@ function quotingAllowed(rfq: (typeof db.rfqs)[number], quote: Quote | undefined)
 
 export const load: PageServerLoad = async ({ params, locals, url }) => {
 	const { user, seller, rfq, quote } = await ctx(locals, url, params.id);
-	const verified = await canSeeBuyerContacts(user);
+	const verified = await isVerifiedSeller(user);
+	const shared = contactsShared(rfq, seller.id);
 	const m = scoreMatch(seller, rfq);
 	const ndaRequired = rfq.values.ndaRequired === 'yes';
 	const buyer = await buyerOf(rfq);
 	const allowed = quotingAllowed(rfq, quote);
 	const counter = quote ? pendingCounter(quote) : null;
+	// What a supplier may know about the buyer before being shortlisted: where, what industry, how serious.
+	const buyerRfqs = db.rfqs.filter((r) => r.buyerUserId === rfq.buyerUserId);
 
 	return {
 		rfq: { id: rfq.id, values: rfq.values, status: rfq.status, deadline: rfq.quoteDeadline, createdAt: rfq.createdAt },
@@ -52,11 +58,22 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
 		ndaAccepted: rfq.ndaAcceptedBy.includes(seller.id),
 		drawingCount: rfq.files.drawings?.length ?? 0,
 		drawings: verified && (!ndaRequired || rfq.ndaAcceptedBy.includes(seller.id)) ? (rfq.files.drawings ?? []) : [],
-		buyer: verified && buyer ? { userId: buyer.id, name: buyer.name, companyName: buyer.companyName, phone: buyer.phone } : null,
+		buyer: shared && buyer ? { userId: buyer.id, name: buyer.name, companyName: buyer.companyName, phone: buyer.phone } : null,
+		buyerSummary: {
+			memberSince: buyer?.createdAt ?? null,
+			requirements: buyerRfqs.length,
+			awarded: buyerRfqs.filter((r) => r.awardedQuoteId).length
+		},
+		messages: threadFor(rfq, seller.id),
+		canMessage: verified && canMessage(rfq, seller.id),
+		messageMax: MESSAGE_MAX,
+		shared,
 		quoteCount: liveQuoteCount(rfq.id),
 		interested: sellerResponse(rfq.id, seller.id)?.kind === 'INTERESTED',
-		quote: quote ? { id: quote.id, status: quote.status, versions: quote.versions, thread: quote.thread, live: isLive(quote) } : null,
-		counter,
+		quote: quote
+			? { id: quote.id, status: quote.status, versions: quote.versions, thread: quote.thread.map((e) => (e.message ? { ...e, message: showText(e.message, shared) } : e)), live: isLive(quote) }
+			: null,
+		counter: counter?.message ? { ...counter, message: showText(counter.message, shared) } : counter,
 		canQuote: verified && allowed.ok,
 		cannotQuoteWhy: !verified ? 'Quotations unlock once your documents are verified.' : allowed.why,
 		defaults: quoteFormDefaults(rfq, quote ? latest(quote) : undefined, seller),
@@ -81,14 +98,14 @@ export const actions: Actions = {
 
 	acceptNda: async ({ params, locals, url }) => {
 		const { user, seller, rfq } = await ctx(locals, url, params.id);
-		if (!(await canSeeBuyerContacts(user))) return fail(403, { error: 'Only verified sellers can accept NDAs.' });
+		if (!(await isVerifiedSeller(user))) return fail(403, { error: 'Only verified sellers can accept NDAs.' });
 		if (!rfq.ndaAcceptedBy.includes(seller.id)) rfq.ndaAcceptedBy.push(seller.id);
 		return { message: 'NDA accepted — drawings unlocked.' };
 	},
 
 	submitQuote: async ({ params, locals, url, request }) => {
 		const { user, seller, rfq, quote } = await ctx(locals, url, params.id);
-		if (!(await canSeeBuyerContacts(user))) return fail(403, { error: 'Quotations unlock once your documents are verified.' });
+		if (!(await isVerifiedSeller(user))) return fail(403, { error: 'Quotations unlock once your documents are verified.' });
 		const allowed = quotingAllowed(rfq, quote);
 		if (!allowed.ok) return fail(409, { error: allowed.why });
 
@@ -142,6 +159,8 @@ export const actions: Actions = {
 	acceptCounter: async ({ params, locals, url }) => {
 		const { seller, rfq, quote } = await ctx(locals, url, params.id);
 		const counter = quote ? pendingCounter(quote) : null;
+	// What a supplier may know about the buyer before being shortlisted: where, what industry, how serious.
+	const buyerRfqs = db.rfqs.filter((r) => r.buyerUserId === rfq.buyerUserId);
 		if (!quote || !counter || rfq.status !== 'OPEN') return fail(409, { error: 'There is no open counter-offer to accept.' });
 		const base = latest(quote);
 		const v = quote.versions.length + 1;
@@ -163,8 +182,15 @@ export const actions: Actions = {
 		if (!quote || !pendingCounter(quote)) return fail(409, { error: 'There is no open counter-offer.' });
 		const message = ((await request.formData()).get('message')?.toString() ?? '').trim().slice(0, 500);
 		addEvent(quote, { by: 'SELLER', kind: 'DECLINE_COUNTER', message: message || undefined });
-		notifyBuyerOf(rfq, { type: 'COUNTER_DECLINED', title: 'Counter-offer declined', body: `${seller.companyName} can’t meet your counter-offer${message ? `: “${message}”` : ''}. Their last quote still stands.`, link: `/buyer/rfq/${rfq.id}/quotes/${quote.id}` });
+		notifyBuyerOf(rfq, { type: 'COUNTER_DECLINED', title: 'Counter-offer declined', body: `${seller.companyName} can’t meet your counter-offer${message ? `: “${maskContacts(message)}”` : ''}. Their last quote still stands.`, link: `/buyer/rfq/${rfq.id}/quotes/${quote.id}` });
 		return { message: 'Declined. Your last quote still stands — you can also send a revision.' };
+	},
+
+	message: async ({ params, locals, url, request }) => {
+		const { user, seller, rfq } = await ctx(locals, url, params.id);
+		if (!(await isVerifiedSeller(user))) return fail(403, { messageError: 'Messages unlock once your documents are verified.' });
+		const err = await sendMessage(rfq, seller.id, 'SELLER', (await request.formData()).get('text')?.toString() ?? '', seller.companyName);
+		return err ? fail(400, { messageError: err }) : { sent: true };
 	},
 
 	withdraw: async ({ params, locals, url }) => {

@@ -52,18 +52,19 @@
 	{#if data.justPosted}
 		<div class="alert ok mt">
 			<strong>🎉 Requirement posted!</strong>
-			{data.matches.length
-				? `${data.matches.length} verified supplier${data.matches.length === 1 ? ' has' : 's have'} been notified. Their quotations will appear here and you'll get a notification for each one. You can also call or WhatsApp them directly below.`
-				: 'No supplier matches it yet. Our help desk can find one for you.'}
+			{data.invited.length
+				? `We invited the ${data.invited.length} best-matched verified supplier${data.invited.length === 1 ? '' : 's'} to quote — not everyone, so no flood of calls. Their quotations will appear here and you'll get a notification for each one. Questions? Message them below.`
+				: 'No verified supplier matches it yet. Our help desk can find one for you.'}
 		</div>
 	{/if}
 	{#if page.url.searchParams.get('edited') === '1'}
-		<div class="alert ok mt"><strong>Requirement updated & re-posted.</strong> {page.url.searchParams.get('notified') ?? 0} supplier(s) notified. Earlier quotes are marked "needs re-quote" — fresh quotes will appear here.</div>
+		<div class="alert ok mt"><strong>Requirement updated & re-posted.</strong> {page.url.searchParams.get('notified') ?? 0} invited supplier(s) told. Earlier quotes are marked "needs re-quote" — fresh quotes will appear here.</div>
 	{/if}
 	{#if form && 'error' in form && form.error}<div class="alert bad mt">{form.error}</div>{/if}
 	{#if form && 'ok' in form && form.ok && form.action === 'feedback'}<div class="alert ok mt">Thanks for the feedback — it helps other buyers choose. {form.closed ? 'Requirement closed.' : ''}</div>{/if}
-	{#if form && 'ok' in form && form.ok && form.action === 'reopen'}<div class="alert ok mt">Requirement reopened with a fresh 7-day quotation window.</div>{/if}
-	{#if form && 'ok' in form && form.ok && form.action === 'shortlist'}<div class="alert ok mt">Shortlisted — the supplier has been told.</div>{/if}
+	{#if form && 'ok' in form && form.ok && form.action === 'reopen'}<div class="alert ok mt">Requirement reopened with a fresh 7-day quotation window{form.invitedMore ? ` — ${form.invitedMore} more supplier(s) invited` : ''}.</div>{/if}
+	{#if form && 'ok' in form && form.ok && form.action === 'inviteMore'}<div class="alert ok mt">{form.invitedMore} more supplier(s) invited to quote.</div>{/if}
+	{#if form && 'ok' in form && form.ok && form.action === 'shortlist'}<div class="alert ok mt">Shortlisted — the supplier has been told, and their phone & WhatsApp are now shared with you (and yours with them).</div>{/if}
 
 	<div class="row between top gap mt">
 		<div>
@@ -112,7 +113,7 @@
 
 		{#if data.quotes.length === 0}
 			<div class="card center">
-				<p class="muted mb-0">{data.interestedTotal ? `${data.interestedTotal} supplier(s) are interested and preparing quotes.` : 'No quotations yet. Matched suppliers have been notified.'} {r.status === 'OPEN' ? closes + '.' : ''}</p>
+				<p class="muted mb-0">{data.interestedTotal ? `${data.interestedTotal} supplier(s) are interested and preparing quotes.` : 'No quotations yet. The invited suppliers have been notified.'} {r.status === 'OPEN' ? closes + '.' : ''}</p>
 			</div>
 		{:else}
 			<div class="table-wrap">
@@ -168,10 +169,17 @@
 	</section>
 
 	<section class="mt-lg">
-		<h2>Matched suppliers ({data.matches.length})</h2>
-		<p class="small muted">Nearest first, by pincode zone then distance. All were notified when you posted.</p>
+		<div class="row between gap">
+			<h2 class="mb-0">Invited suppliers ({data.invited.length})</h2>
+			{#if data.moreAvailable && r.status === 'OPEN'}
+				<form method="POST" action="?/inviteMore" use:enhance>
+					<button class="btn ghost sm">+ Invite {Math.min(data.moreBatch, data.moreAvailable)} more ({data.moreAvailable} available)</button>
+				</form>
+			{/if}
+		</div>
+		<p class="small muted">The best-matched verified suppliers — nearest first, then fit and track record. If few quotes come in after 2 days, we invite more automatically. Phone & WhatsApp are shared when you shortlist a quote; until then, message them here.</p>
 
-		{#if data.matches.length === 0}
+		{#if data.invited.length === 0}
 			<div class="card center">
 				<h3>No verified supplier covers this yet</h3>
 				<p class="muted">Let the eYantrik team source it — we can make it in our plant or find a partner.</p>
@@ -181,17 +189,15 @@
 			<div class="table-wrap">
 				<table>
 					<thead>
-						<tr><th>Supplier</th><th>Covers</th><th class="num">Distance</th><th>Location</th><th>Machines</th><th class="num">Rating</th><th>Contact</th></tr>
+						<tr><th>Supplier</th><th>Covers</th><th class="num">Distance</th><th>Location</th><th>Status</th><th>Talk</th></tr>
 					</thead>
 					<tbody>
-						{#each data.matches as m (m.seller.id)}
-							<tr>
+						{#each data.invited as m (m.seller.id)}
+							<tr class:dead={m.state === 'PASSED'}>
 								<td>
 									<a href="/sellers/{m.seller.slug}"><strong>{m.seller.companyName}</strong></a>
 									<div class="mt-xs"><VerificationBadge status={m.seller.verification} /></div>
-									{#if m.quoted}<div class="tiny" style="color:var(--ok)">💰 Sent a quote</div>{/if}
-									{#if m.contacted}<div class="tiny" style="color:var(--ok)">✓ You contacted them</div>{/if}
-									{#if m.contactedYou}<div class="tiny" style="color:var(--brand)">← They contacted you</div>{/if}
+									<div class="tiny muted">{m.seller.rating ? `★ ${m.seller.rating}` : 'no reviews yet'}{#if m.reason === 'PICKED'} · you asked them{/if}</div>
 								</td>
 								<td>
 									{#if wanted.length}
@@ -204,14 +210,19 @@
 								</td>
 								<td class="num small">{m.distanceKm === null ? '—' : `~${m.distanceKm} km`}<div class="tiny muted">{PIN_ZONE_LABEL[m.zone]}</div></td>
 								<td class="small">{m.seller.city}, {m.seller.state}{#if m.materialMatch}<div class="tiny" style="color:var(--ok)">✓ Works with this material</div>{/if}</td>
-								<td class="small">{m.seller.machines.map((x) => `${x.count}× ${x.name}`).join(', ')}</td>
-								<td class="num">{m.seller.rating ? `★ ${m.seller.rating}` : '—'}</td>
-								<td style="min-width:220px">
+								<td class="small">
+									{#if m.state === 'QUOTED'}<span style="color:var(--ok)">💰 Quoted</span>
+									{:else if m.state === 'INTERESTED'}👋 Interested
+									{:else if m.state === 'PASSED'}<span class="muted">Passed</span>
+									{:else}<span class="muted">Invited</span>{/if}
+								</td>
+								<td style="min-width:200px">
+									{#if m.state !== 'PASSED' || m.messages}
+										<a class="btn sm ghost" href="/buyer/rfq/{r.id}/suppliers/{m.seller.id}">💬 {m.messages ? `Messages (${m.messages})` : 'Message'}</a>
+									{/if}
 									{#if m.seller.contact}
-										<div class="tiny bold">{m.seller.contact.person}</div>
-										<ContactButtons size="sm" phone={m.seller.contact.phone} whatsapp={m.seller.contact.whatsapp} sellerId={m.seller.id} rfqId={r.id} message={`Hi, I found ${m.seller.companyName} on eYantrik. I need: ${title} (${r.id}).`} />
-									{:else}
-										<span class="small muted">🔒 Locked</span>
+										<div class="tiny bold mt-xs">{m.seller.contact.person}</div>
+										<ContactButtons size="sm" phone={m.seller.contact.phone} whatsapp={m.seller.contact.whatsapp} sellerId={m.seller.id} rfqId={r.id} message={`Hi, about my requirement ${title} (${r.id}) on eYantrik.`} />
 									{/if}
 								</td>
 							</tr>
@@ -219,7 +230,7 @@
 					</tbody>
 				</table>
 			</div>
-			{#if wanted.length > 1 && !data.matches.some((m) => m.covers.length === wanted.length)}
+			{#if wanted.length > 1 && !data.invited.some((m) => m.covers.length === wanted.length)}
 				<div class="alert warn mt"><strong>No single supplier covers all {wanted.length} processes.</strong> You can coordinate several suppliers yourself, or let eYantrik manage the whole chain. <a href="/help?rfq={r.id}">Get help →</a></div>
 			{/if}
 		{/if}
@@ -234,7 +245,7 @@
 					<label for="sellerId">Supplier</label>
 					<select id="sellerId" name="sellerId" required>
 						<option value="">Select…</option>
-						{#each data.matches as m}<option value={m.seller.id}>{m.seller.companyName}{m.contacted ? ' (contacted)' : ''}</option>{/each}
+						{#each data.invited as m}<option value={m.seller.id}>{m.seller.companyName}{m.state === 'QUOTED' ? ' (quoted)' : ''}</option>{/each}
 					</select>
 					{#if fbErrors.sellerId}<span class="err">{fbErrors.sellerId}</span>{/if}
 				</div>
@@ -258,7 +269,7 @@
 					<textarea id="comment" name="comment" maxlength="1000" placeholder="Quality, communication, delivery time…"></textarea>
 				</div>
 				{#if r.status === 'OPEN'}<label class="row gap small mb"><input type="checkbox" name="close" /> Also close this requirement</label>{/if}
-				<button class="btn" disabled={busy || data.matches.length === 0}>{busy ? 'Saving…' : 'Submit feedback'}</button>
+				<button class="btn" disabled={busy || data.invited.length === 0}>{busy ? 'Saving…' : 'Submit feedback'}</button>
 			</form>
 		</section>
 
@@ -276,7 +287,7 @@
 				{/each}
 			{/if}
 			{#if r.status === 'CLOSED'}
-				<p class="small mt mb-0">Not happy with the result? <strong>Reopen</strong> to contact other suppliers, or <a href="/help?rfq={r.id}">ask eYantrik to step in</a>.</p>
+				<p class="small mt mb-0">Not happy with the result? <strong>Reopen</strong> to invite other suppliers, or <a href="/help?rfq={r.id}">ask eYantrik to step in</a>.</p>
 			{/if}
 		</section>
 	</div>
@@ -291,7 +302,7 @@
 	.sort { text-decoration: none; padding: 4px 8px; border-radius: 6px; color: var(--ink-2); border: 1px solid var(--line); background: #fff; }
 	.sort.active { background: var(--ink); color: #fff; border-color: var(--ink); }
 	.quotes .best { color: var(--ok-ink); background: #dcfce7; padding: 1px 6px; border-radius: 4px; }
-	.quotes tr.dead td { opacity: 0.55; }
+	tr.dead td { opacity: 0.55; }
 	.quotes tr.won td { background: #f0fdf4; }
 	.quotes tr:has(+ .insights-row) td { border-bottom: none; }
 	.insights-row td { padding-top: 0; }

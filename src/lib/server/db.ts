@@ -148,8 +148,38 @@ export interface Rfq {
 	editedAt?: string;
 	/** the buyer's account is suspended/deactivated: hidden from sellers until it is reactivated */
 	hidden?: boolean;
+	/**
+	 * Suppliers invited to quote, in the order they were invited (decision 2026-10-13: curate, don't
+	 * broadcast). Only invited sellers see the requirement. See invites.ts.
+	 */
+	invites: Invite[];
+	/** last automatic "few quotes → invite more" check (invites.ts) */
+	topUpCheckedAt?: string;
 	createdAt: string;
 	updatedAt: string;
+}
+
+/**
+ * Why a supplier was invited: first pick, buyer asked for more, auto top-up (few quotes), a supplier passed,
+ * admin, after an edit, or the buyer picked this supplier from the directory.
+ */
+export type InviteReason = 'FIRST' | 'BUYER' | 'AUTO' | 'REPLACEMENT' | 'ADMIN' | 'EDIT' | 'PICKED';
+
+export interface Invite {
+	sellerId: string;
+	at: string;
+	reason: InviteReason;
+}
+
+/** One on-platform message between a buyer and one supplier about one requirement. */
+export interface Message {
+	id: string;
+	rfqId: string;
+	sellerId: string;
+	from: 'BUYER' | 'SELLER';
+	/** stored as typed; phone numbers / emails are hidden on screen until contacts are shared (contactMask.ts) */
+	text: string;
+	at: string;
 }
 
 // ---- Quotations & negotiation ----
@@ -298,17 +328,22 @@ interface Db {
 	quotes: Quote[];
 	responses: SellerResponse[];
 	notifications: Notification[];
+	messages: Message[];
 	/** unsent "Post requirement" drafts kept while a visitor logs in */
 	drafts: Map<string, { values: RfqValues; expiresAt: number }>;
 	seq: number;
 }
 
 function emptyDb(): Db {
-	return { rfqs: [], contacts: [], feedback: [], tickets: [], jobs: [], quotes: [], responses: [], notifications: [], drafts: new Map(), seq: 1000 };
+	return { rfqs: [], contacts: [], feedback: [], tickets: [], jobs: [], quotes: [], responses: [], notifications: [], messages: [], drafts: new Map(), seq: 1000 };
 }
 
 const g = globalThis as unknown as { __eyantrikDb?: Db };
 export const db: Db = (g.__eyantrikDb ??= emptyDb());
+db.messages ??= []; // store created before messages existed (dev hot-reload)
+for (const r of db.rfqs) r.invites ??= [];
+
+export const isInvited = (rfq: Rfq, sellerId: string) => rfq.invites.some((i) => i.sellerId === sellerId);
 
 export function nextId(prefix: string): string {
 	db.seq += 1;

@@ -24,16 +24,16 @@
 
 	const steps: { icon: IconName; title: string; text: string }[] = [
 		{ icon: 'doc', title: 'Post your requirement', text: 'Part, material, quantity, drawings and delivery city — in about two minutes.' },
-		{ icon: 'pin', title: 'Matched nearest first', text: 'Verified factories with the right process see it instantly, closest to you first.' },
+		{ icon: 'pin', title: 'A few best matches invited', text: 'Only the best-matched verified factories are invited to quote, closest to you first — not a crowd of cold callers.' },
 		{ icon: 'chart', title: 'Compare real quotes', text: 'Landed cost per piece, lead time and terms side by side. Negotiate in-app.' },
-		{ icon: 'handshake', title: 'Award & deal directly', text: 'Call or WhatsApp the factory. No middlemen, no commission.' }
+		{ icon: 'handshake', title: 'Shortlist & award', text: 'Ask questions in-app. Contacts are shared when you shortlist a quote. No commission.' }
 	];
 
 	const features: { icon: IconName; title: string; text: string; tone: string }[] = [
 		{ icon: 'shield', title: 'Verified, twice', text: 'Documents checked by our team. Ground-verified factories were visited — machines confirmed on the shop floor.', tone: 'blue' },
 		{ icon: 'pin', title: 'Nearby first', text: 'Matching ranks suppliers by pincode zone and distance, so samples and visits stay quick and cheap.', tone: 'orange' },
 		{ icon: 'chart', title: 'True landed cost', text: 'Tooling, freight and GST rolled into one per-piece number — compare quotes like-for-like.', tone: 'violet' },
-		{ icon: 'phone', title: 'Direct contact', text: 'Phone and WhatsApp straight to the factory owner once you post a requirement.', tone: 'green' },
+		{ icon: 'chat', title: 'No spam calls', text: 'Your requirement goes to a few invited factories, not everyone. Talk in-app; phone numbers are shared when you shortlist.', tone: 'green' },
 		{ icon: 'bolt', title: 'Fast negotiation', text: 'Counter-offers on price, lead time and payment terms — up to three rounds, all tracked.', tone: 'blue' },
 		{ icon: 'headset', title: 'Help desk on call', text: 'Multiple processes or a tight deadline? Our team can manage the whole order for you.', tone: 'orange' }
 	];
@@ -41,17 +41,17 @@
 	// ---------- seller home ----------
 	const sh = $derived(data.sellerHome);
 	const sellerSteps: { icon: IconName; title: string; text: string }[] = [
-		{ icon: 'bolt', title: 'Get matching leads', text: 'Requirements for the work you do reach you first — nearest factories ranked on top.' },
+		{ icon: 'bolt', title: 'Get invited', text: 'Each requirement goes to a few best-matched factories, nearest first. You compete with a handful, not a hundred.' },
 		{ icon: 'check', title: 'Mark interested', text: 'One tap tells the buyer you can make it. Not for you? Pass and your feed gets sharper.' },
 		{ icon: 'doc', title: 'Send your quote', text: 'Quote in minutes with saved defaults and the cost estimator. Revise as you negotiate.' },
-		{ icon: 'handshake', title: 'Win the order', text: 'The buyer awards on the platform and calls you directly. No commission, ever.' }
+		{ icon: 'handshake', title: 'Win the order', text: 'The buyer shortlists and awards on the platform — contacts are shared then. No commission.' }
 	];
 	const sellerFeatures: { icon: IconName; title: string; text: string; tone: string }[] = [
 		{ icon: 'pin', title: 'Leads near your factory', text: 'Matching ranks by pincode zone and distance, so local buyers find you before far-away competitors.', tone: 'orange' },
 		{ icon: 'chart', title: 'Quote in minutes', text: 'Saved defaults for GST, payment terms and freight, plus a cost estimator for machine hours.', tone: 'violet' },
 		{ icon: 'shield', title: 'Badge buyers trust', text: 'Documents verified, then factory visited — verified suppliers win more shortlists.', tone: 'blue' },
 		{ icon: 'spark', title: 'Complete profile, more leads', text: 'Complete profiles rank higher in matching. The ring on your photo shows what to add next.', tone: 'green' },
-		{ icon: 'phone', title: 'Direct buyer contact', text: 'Once verified you see the buyer’s name and number — call or WhatsApp straight away.', tone: 'blue' },
+		{ icon: 'chat', title: 'Serious buyers only', text: 'Ask the buyer questions in-app. When they shortlist your quote, you get their name and number.', tone: 'blue' },
 		{ icon: 'headset', title: 'Help desk for growth', text: 'Spare capacity or a process you don’t do? Our team finds buyers and sub-contractors.', tone: 'orange' }
 	];
 	const myCategories = $derived(
@@ -69,7 +69,7 @@
 
 <svelte:head>
 	<title>eYantrik — Get parts made by verified factories near you</title>
-	<meta name="description" content="India's free marketplace for custom manufacturing. Post your requirement, get quotes from verified CNC, casting, forging, moulding and sheet metal factories nearby, and deal directly by phone or WhatsApp." />
+	<meta name="description" content="India's free marketplace for custom manufacturing. Post your requirement, get quotes from verified CNC, casting, forging, moulding and sheet metal factories nearby, and award the order — without a flood of sales calls." />
 </svelte:head>
 
 {#snippet helpBand()}
@@ -107,7 +107,7 @@
 				<span class="pill-tag rise"><span class="dot"></span> Free for manufacturers — no commission</span>
 				<h1 class="rise" style="animation-delay:.05s">Fill your machines with <span class="hl">real orders</span> near you.</h1>
 				<p class="lead rise" style="animation-delay:.1s">
-					{#if sh.registered}Welcome back, {sh.name}. Buyers post requirements every day — the ones that match {sh.companyName} land in your lead feed first.{:else}Welcome, {sh.name}. Register your factory once and every matching requirement near you reaches your lead feed — free.{/if}
+					{#if sh.registered}Welcome back, {sh.name}. Buyers post requirements every day — each goes to the few best-matched factories nearby, and {sh.companyName} can be one of them.{:else}Welcome, {sh.name}. Register your factory once and get invited to quote on matching requirements near you — free.{/if}
 				</p>
 				<div class="cta-row rise" style="animation-delay:.2s">
 					{#if sh.registered}
@@ -156,7 +156,7 @@
 	<section class="trust">
 		<div class="trust-inner">
 			{#if sh.registered}
-				<a class="t-item link" href="/seller"><strong>{sh.matchingLeads}</strong><span>new matching leads</span></a>
+				<a class="t-item link" href="/seller"><strong>{sh.matchingLeads}</strong><span>new invitations</span></a>
 				<a class="t-item link" href="/seller?tab=quoted"><strong>{sh.quotesSent}</strong><span>quotes sent</span></a>
 				<a class="t-item link" href="/seller?tab=won"><strong>{sh.won}</strong><span>orders won</span></a>
 				<div class="t-item"><VerificationBadge status={sh.verification as VerificationStatus} /><span>verification</span></div>
@@ -219,7 +219,7 @@
 			</div>
 			<div class="cats">
 				{#each myCategories as c (c.id)}
-					<a href={sh.registered ? '/seller?tab=all' : '/seller/onboarding'} class="cat" class:mine={c.mine}>
+					<a href={sh.registered ? '/seller' : '/seller/onboarding'} class="cat" class:mine={c.mine}>
 						<span class="cat-mark" aria-hidden="true">{c.emoji}</span>
 						<span class="cat-label">{c.label}{#if c.mine} <em class="mine-tag">your work</em>{/if}<small>{c.examples}</small></span>
 						<span class="cat-count" title="Open requirements">{c.demand > 0 ? c.demand : ''}</span>
@@ -248,7 +248,7 @@
 						<span>· <strong>{data.buyerHome.open}</strong> open requirement{data.buyerHome.open === 1 ? '' : 's'}</span>
 						{#if data.buyerHome.quotesWaiting}<span class="hot">· {data.buyerHome.quotesWaiting} new quote{data.buyerHome.quotesWaiting === 1 ? '' : 's'} waiting</span>{/if}
 					{:else}
-						<span>· Post your first requirement to unlock supplier contacts</span>
+						<span>· Post your first requirement — the best-matched verified factories will quote</span>
 					{/if}
 					<span class="go">My requirements →</span>
 				</a>
@@ -318,7 +318,7 @@
 				</div>
 			</div>
 			<div class="float f1"><Icon name="shield" size={16} /> Ground verified</div>
-			<div class="float f2"><Icon name="phone" size={16} /> Call the factory directly</div>
+			<div class="float f2"><Icon name="chat" size={16} /> Ask the factory in-app</div>
 		</div>
 	</div>
 </section>
@@ -334,7 +334,7 @@
 		{:else}
 			<div class="t-item v"><Icon name="shield" size={22} /><span><b>Verified</b> factories only</span></div>
 			<div class="t-item v"><Icon name="pin" size={22} /><span><b>Nearest-first</b> matching</span></div>
-			<div class="t-item v"><Icon name="phone" size={22} /><span><b>Direct</b> phone & WhatsApp</span></div>
+			<div class="t-item v"><Icon name="chat" size={22} /><span><b>No</b> spam calls</span></div>
 			<div class="t-item v"><Icon name="spark" size={22} /><span><b>Zero</b> commission</span></div>
 		{/if}
 	</div>
@@ -399,7 +399,7 @@
 				<span class="empty-ico"><Icon name="factory" size={28} /></span>
 				<div>
 					<h3>Be one of the first verified factories</h3>
-					<p class="muted small mb-0">The directory is opening now. Early members get listed first and receive every matching requirement in their area — free.</p>
+					<p class="muted small mb-0">The directory is opening now. Early members get listed first and invited to quote on matching requirements in their area — free.</p>
 				</div>
 				{#if side !== 'BUYER' && side !== 'ADMIN'}
 					<a class="btn ok" href={side === 'SELLER' ? (sideHasProfile ? '/seller' : '/seller/onboarding') : '/login/seller?mode=signup'}>List your factory</a>
@@ -436,7 +436,7 @@
 				<ul>
 					<li><Icon name="check" size={16} /> Free requirement posting, unlimited</li>
 					<li><Icon name="check" size={16} /> Quotes compared on landed cost</li>
-					<li><Icon name="check" size={16} /> Factory owner's phone & WhatsApp</li>
+					<li><Icon name="check" size={16} /> A few verified quotes, no flood of calls</li>
 				</ul>
 				<a class="btn lg" href="/rfq/new">Post a requirement <Icon name="arrow" size={18} /></a>
 			</div>

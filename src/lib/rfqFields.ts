@@ -73,7 +73,7 @@ export const RFQ_FIELDS: RfqField[] = [
 		widget: 'processPicker',
 		core: true,
 		filterBy: 'commodityCategory',
-		help: 'Not sure? Leave it empty — every supplier in that type of work will see your requirement.',
+		help: 'Not sure? Leave it empty — the best-matched suppliers in that type of work will be invited to quote.',
 		options: PROCESSES.map((p) => ({ value: p.id, label: p.label })),
 		section: 'Part'
 	},

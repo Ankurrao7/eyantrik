@@ -1,7 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { randomHex } from '#lib/server/auth.ts';
 import { db, nextId, now } from '#lib/server/db.ts';
-import { notifyRfqPosted } from '#lib/server/notify.ts';
+import { inviteFirst } from '#lib/server/invites.ts';
 import { saveFormFiles } from '#lib/server/files.ts';
 import { parseRfqForm, type RfqValues } from '#lib/rfqFields.ts';
 import type { Actions, PageServerLoad } from './$types';
@@ -59,6 +59,7 @@ export const actions: Actions = {
 			values,
 			files,
 			ndaAcceptedBy: [] as string[],
+			invites: [],
 			status: 'OPEN' as const,
 			reopenCount: 0,
 			editCount: 0,
@@ -74,7 +75,7 @@ export const actions: Actions = {
 			cookies.delete(DRAFT_COOKIE, { path: '/' });
 		}
 
-		const notified = await notifyRfqPosted(rfq);
-		redirect(303, `/buyer/rfq/${rfq.id}?posted=1&notified=${notified}`);
+		const invited = await inviteFirst(rfq);
+		redirect(303, `/buyer/rfq/${rfq.id}?posted=1&invited=${invited}`);
 	}
 };

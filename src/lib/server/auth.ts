@@ -17,7 +17,7 @@
 // • Users, sessions and login attempts live in MongoDB (users.ts).
 
 import { error, redirect, type Cookies } from '@sveltejs/kit';
-import { db, type Role, type User } from './db.ts';
+import { db, type Rfq, type Role, type User } from './db.ts';
 import { hashPassword, verifyPassword } from './password.ts';
 import { blockedLoginMessage, isActive } from './accounts.ts';
 import { findSellerById } from './sellers.ts';
@@ -286,23 +286,27 @@ export function requireUser(locals: App.Locals, url: URL, roles?: Role[]): User 
 	return user;
 }
 
-// ---- Contact-unlock rules (Phase 1) ----
+// ---- Contact rules (decision 2026-10-13: keep the deal on the platform) ----
 
-/** Buyer sees seller phone/WhatsApp only after posting at least one requirement. Admin always. */
-export function canSeeSellerContacts(user: User | null): boolean {
-	if (!user) return false;
-	if (user.role === 'ADMIN') return true;
-	return user.role === 'BUYER' && db.rfqs.some((r) => r.buyerUserId === user.id);
+/**
+ * A buyer and a supplier see each other's phone / WhatsApp / email only once the buyer has shortlisted
+ * or awarded that supplier's quote on this requirement. Before that they talk through on-platform
+ * messages (messages.ts). Once shared, contacts stay shared for that requirement.
+ */
+export function contactsShared(rfq: Rfq, sellerId: string): boolean {
+	return db.quotes.some(
+		(q) => q.rfqId === rfq.id && q.sellerId === sellerId && (q.status === 'SHORTLISTED' || q.status === 'ACCEPTED' || q.thread.some((e) => e.kind === 'SHORTLIST' || e.kind === 'AWARD'))
+	);
 }
 
-/** Why seller contacts are hidden, for the lock message on the page. */
-export function sellerContactLock(user: User | null): 'login' | 'post-rfq' | 'role' {
+/** What the lock message on directory / profile pages says to this viewer. */
+export function sellerContactLock(user: User | null): 'login' | 'buyer' | 'role' {
 	if (!user) return 'login';
-	return user.role === 'BUYER' ? 'post-rfq' : 'role';
+	return user.role === 'BUYER' ? 'buyer' : 'role';
 }
 
-/** Seller sees buyer contacts only once their documents are verified (genuine leads both ways). */
-export async function canSeeBuyerContacts(user: User | null): Promise<boolean> {
+/** Documents verified (and account active): may quote, accept NDAs and message buyers. */
+export async function isVerifiedSeller(user: User | null): Promise<boolean> {
 	if (!user) return false;
 	if (user.role === 'ADMIN') return true;
 	if (user.role !== 'SELLER' || !user.sellerId) return false;

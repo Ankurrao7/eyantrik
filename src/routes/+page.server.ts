@@ -2,9 +2,9 @@
 // One address, three home pages: visitor (public, SEO), buyer (buying + "your requirements" strip) and
 // seller (leads, profile completeness, demand by type of work). Which one a tab shows is decided in the
 // page by the tab's side (tabSide), so both signed-in sides' summaries are sent.
-import { canSeeSellerContacts, sellerContactLock } from '#lib/server/auth.ts';
-import { db, sellerRating, type Seller, type User } from '#lib/server/db.ts';
-import { scoreMatch, toPublicSeller } from '#lib/server/matching.ts';
+import { sellerContactLock } from '#lib/server/auth.ts';
+import { db, isInvited, sellerRating, type Seller, type User } from '#lib/server/db.ts';
+import { toPublicSeller } from '#lib/server/matching.ts';
 import { findSellerById, listedSellers } from '#lib/server/sellers.ts';
 import { countUsers } from '#lib/server/users.ts';
 import { isLive, isQuotingOpen, sellerResponse } from '#lib/server/quotes.ts';
@@ -42,7 +42,7 @@ async function sellerHome(u: User) {
 		percent: score.percent,
 		missing: score.missing.slice(0, 3),
 		matchingLeads: openRfqs().filter(
-			(r) => isQuotingOpen(r) && scoreMatch(seller, r).score > 0 && sellerResponse(r.id, seller.id)?.kind !== 'NOT_FOR_US' && !quotes.some((q) => q.rfqId === r.id)
+			(r) => isQuotingOpen(r) && isInvited(r, seller.id) && sellerResponse(r.id, seller.id)?.kind !== 'NOT_FOR_US' && !quotes.some((q) => q.rfqId === r.id)
 		).length,
 		quotesSent: quotes.length,
 		won: quotes.filter((q) => q.status === 'ACCEPTED').length
@@ -51,7 +51,6 @@ async function sellerHome(u: User) {
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const sellers = await listedSellers();
-	const showContacts = canSeeSellerContacts(locals.sessions.BUYER);
 
 	const featured = [...sellers]
 		.sort(
@@ -60,7 +59,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 				(sellerRating(b) ?? 0) - (sellerRating(a) ?? 0)
 		)
 		.slice(0, 4)
-		.map((s) => toPublicSeller(s, showContacts));
+		.map((s) => toPublicSeller(s, false)); // contacts are shared only after a shortlist
 
 	// Browse by type of work: every shop, with how many listed suppliers do any of its processes.
 	const categories = SHOPS.map((sh) => {

@@ -150,6 +150,7 @@
 						<div class="q-actions">
 							{#if q.phone}<a class="btn ghost sm" href="tel:+91{q.phone}">📞 Call</a>{/if}
 							{#if q.type === 'CALL' && calling !== q.id}<button type="button" class="btn ghost sm" onclick={() => (calling = q.id)}>Mark as called</button>{/if}
+							{#if q.type === 'NO_QUOTES'}<form method="POST" action="?/inviteMore" use:enhance={keep}><input type="hidden" name="rfqId" value={q.id} /><button class="btn ghost sm">Invite more suppliers</button></form>{/if}
 							<a class="btn sm" href={q.href}>{q.cta} →</a>
 						</div>
 					</li>
@@ -256,7 +257,7 @@
 		<p class="muted small">For the ground sales team: every buyer requirement with contact details — call buyers directly to offer eYantrik's managed service.</p>
 		<div class="table-wrap">
 			<table>
-				<thead><tr><th>Requirement</th><th>Buyer</th><th>Delivery</th><th class="num">Interested</th><th class="num">Quotes</th><th class="num">Lowest / pc</th><th>Status</th></tr></thead>
+				<thead><tr><th>Requirement</th><th>Buyer</th><th>Delivery</th><th class="num">Invited</th><th class="num">Interested</th><th class="num">Quotes</th><th class="num">Lowest / pc</th><th>Status</th></tr></thead>
 				<tbody>
 					{#each data.requirements as r (r.id)}
 						<tr id={r.id} class="target">
@@ -269,6 +270,7 @@
 							</td>
 							<td>{#if r.buyer}<a href="/admin/buyers/{r.buyerUserId}"><strong>{r.buyer.name}</strong></a><div class="tiny muted">{r.buyer.company}</div><a class="small" href="tel:+91{r.buyer.phone}">📞 +91 {r.buyer.phone}</a>{#if r.buyerOnHold}<div class="tiny" style="color:var(--warn-ink)">⏸ Buyer on hold — hidden from sellers</div>{/if}{:else}—{/if}</td>
 							<td class="small">{r.city}</td>
+							<td class="num">{r.invited}</td>
 							<td class="num">{r.interested}</td>
 							<td class="num">{r.quotes}</td>
 							<td class="num">{r.lowest === null ? '—' : inr(r.lowest)}</td>

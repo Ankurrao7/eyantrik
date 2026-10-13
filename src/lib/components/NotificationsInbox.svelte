@@ -8,7 +8,7 @@
 	const icon: Record<string, string> = {
 		NEW_LEAD: '📥', LEAD_TEASER: '🔒', INTERESTED: '👋', QUOTE_RECEIVED: '💰', QUOTE_REVISED: '✏️',
 		COUNTER: '🤝', COUNTER_ACCEPTED: '✅', COUNTER_DECLINED: '✖️', SHORTLISTED: '⭐', AWARDED: '🏆',
-		DECLINED: '✖️', NOT_SELECTED: '📭', WITHDRAWN: '↩️', VERIFICATION: '🛡️', NOT_FOR_US: '🙅', RFQ_UPDATED: '🔄', ORDER_UPDATE: '📍'
+		DECLINED: '✖️', NOT_SELECTED: '📭', WITHDRAWN: '↩️', VERIFICATION: '🛡️', NOT_FOR_US: '🙅', RFQ_UPDATED: '🔄', ORDER_UPDATE: '📍', MESSAGE: '💬', MORE_INVITED: '📣'
 	};
 	const ago = (iso: string) => {
 		const m = Math.round((Date.now() - Date.parse(iso)) / 60_000);

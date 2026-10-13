@@ -27,10 +27,8 @@
 		</div>
 	</div>
 
-	{#if data.unlocked}
-		<div class="alert ok mt">✓ <strong class="inline">Supplier contacts unlocked.</strong> You can call or WhatsApp any verified supplier in the <a href="/sellers">directory</a>.</div>
-	{:else}
-		<div class="alert info mt"><strong>Post your first requirement to unlock supplier contacts.</strong> It's free — matched suppliers' phone & WhatsApp appear instantly.</div>
+	{#if !data.unlocked}
+		<div class="alert info mt"><strong>Post your first requirement — it's free.</strong> We invite the few best-matched verified suppliers to quote, so you compare real quotes without a flood of sales calls.</div>
 	{/if}
 
 	<div class="grid four mt">

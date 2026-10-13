@@ -2,7 +2,7 @@
 
 > Single source of truth for **what we're building, why, and how it flows**.
 > Update this file whenever a decision is made, a feature ships, or the flow changes.
-> Last updated: **2026-10-13** (positioning: a deal platform, not a lead directory)
+> Last updated: **2026-10-13** (steps 1 & 2 built: contacts after shortlist + on-platform messages; curated invitations)
 
 ---
 
@@ -33,10 +33,10 @@
 | Self-managed deals are not tracked | Platform loses the order and learns nothing |
 | Public directory + SEO pages as the main front door | Directory as the product |
 
-**The new method (adopted 2026-10-13 — build order to be decided, nothing below is built yet):**
+**The new method (adopted 2026-10-13). Steps 1 and 2 are BUILT (2026-10-13, §3 and §5.1); 3–6 not yet:**
 
-1. **Keep the deal on the platform.** Phone numbers are shared only once the buyer **shortlists or awards** a seller; before that, buyer and seller talk through simple on-platform messages. *Reverses the 2026-10-07 rule "buyer sees seller contacts after posting ≥1 requirement" (§3) once built.*
-2. **Curate, don't broadcast.** Each RFQ is offered to the **top 5–8 matched sellers** (nearest-first + fit + track record); more are invited only if quotes don't come in. Buyers get fewer, better quotes; sellers get a real win rate.
+1. ✅ **Keep the deal on the platform.** Phone numbers are shared only once the buyer **shortlists or awards** a seller; before that, buyer and seller talk through on-platform messages. *Replaced the 2026-10-07 rule "buyer sees seller contacts after posting ≥1 requirement".* Details: §3 Contact & visibility rules.
+2. ✅ **Curate, don't broadcast.** Each RFQ is offered to the **top 6 matched sellers** (nearest-first + fit + track record); more are invited when a seller passes, when the buyer asks, or automatically when quotes don't come in. Buyers get fewer, better quotes; sellers get a real win rate. Details: §5.1.
 3. **Rate sellers on delivered work, not just a badge.** Every awarded deal gets a light order step — PO upload, milestones, delivery confirmation, rating — not only concierge jobs. Track on-time delivery, rejection rate, response time and quote accuracy; feed them into matching and the public profile.
 4. **Earn from transactions and tools, never from leads.** Phase 2 options: fee on managed orders, payment protection / milestone payments (late MSME payments are a real pain), paid tools for job shops. Sellers never pay to see a lead.
 5. **Seller side = a daily tool.** Quote management, cost estimator, capacity calendar, job tracking — a reason to open eYantrik even with no new leads.
@@ -44,7 +44,7 @@
 
 The public directory stays as **acquisition (search traffic)**, not as the product.
 
-**Suggested order:** 1 and 2 first (small code changes that change what the platform is), then 3 (builds on them), then 5 and 6; 4 is Phase 2. Final order to be decided with the user.
+**Suggested order:** 1 and 2 (done), then 3 (builds on them), then 5 and 6; 4 is Phase 2. Final order to be decided with the user.
 
 ---
 
@@ -112,20 +112,24 @@ VISITOR ── browse directory ──┐
                     LOGIN (ID + password)
                  ┌────────────┴────────────┐
               BUYER                      SELLER
-  post RFQ → matched sellers      register factory (rules) → docs review
-  contacts unlock after 1st RFQ   → DOCS_VERIFIED (listed, gets leads)
-  call / WhatsApp (logged)        → GROUND_VERIFIED (field visit)
-  feedback, close / reopen        lead feed: matched RFQs + buyer contact
-  "Need assistance" → help desk   NDA accept → drawings
+  post RFQ → top 6 invited        register factory (rules) → docs review
+  message invited suppliers       → DOCS_VERIFIED (listed, gets invited)
+  shortlist → contacts shared     → GROUND_VERIFIED (field visit)
+  invite more / ask from profile  lead feed: invitations only
+  feedback, close / reopen        message buyer, quote, NDA → drawings
+  "Need assistance" → help desk   shortlisted → buyer contact
                  └────────────┬────────────┘
                  SELF-MANAGED  or  CONCIERGE (help desk → admin job costing)
 ```
 
-### Contact & visibility rules
-> Current build. Will change under §1.1 method #1 (contacts only after shortlist / award, on-platform messages before that).
-- Buyer sees seller phone/WhatsApp **only after posting ≥1 requirement**.
-- Seller sees buyer identity/phone **only once documents are verified**.
-- Unverified (DOCS_SUBMITTED) sellers are hidden from the directory; they see lead *counts* as motivation.
+### Contact & visibility rules (decision 2026-10-13, built — §1.1 step 1)
+- **Contacts are shared per requirement, per supplier, once the buyer shortlists (or awards) that supplier's quote** — both ways at once: the buyer sees the supplier's person / phone / WhatsApp, the supplier sees the buyer's name / company / phone. Once shared, they stay shared for that requirement (`contactsShared()` in `auth.ts`).
+- **No contacts anywhere else:** directory cards, supplier profiles and the home page never show phone numbers (only the owner sees their own on their profile; admin sees everything in the console). Instead buyers get **"Ask for a quote"** on a supplier profile — it invites that supplier to one of their open requirements (`inviteChosen`, reason `PICKED`).
+- **Before the shortlist** a supplier sees only "Buyer in <city> · <industry> · N requirements posted · M awarded · member since …".
+- **On-platform messages** (`messages.ts`, `MessageThread.svelte`): one thread per requirement + supplier. Seller: section on `/seller/rfq/[id]#messages` (verified only). Buyer: `/buyer/rfq/[id]/suppliers/[sellerId]`, linked from the invited list and the quote page. Allowed for invited (or quoting) suppliers while the requirement is open, and for the winner after the award. Each message notifies the other side (`MESSAGE`).
+- **Contact masking** (`src/lib/contactMask.ts`): phone numbers (10+ digits), emails and links typed into messages, quote notes, counter-offer and decline notes are shown as "[contact shared after shortlisting]" until contacts are shared. Text is stored as typed, so it reads normally once shared. Notification previews are always masked.
+- **Call log** (`/api/contact-log`) accepts a call only for a pair whose contacts are shared on that requirement.
+- Unverified (DOCS_SUBMITTED) sellers are hidden from the directory and are never invited; they see a teaser count ("N open requirements match your work — finish verification") and get `LEAD_TEASER` alerts.
 - If RFQ has **NDA required**, drawing file names are hidden until a verified seller clicks *Accept NDA*.
 - Every call/WhatsApp tap is logged (`/api/contact-log`) — used to see which matches lead to deals (no longer meant for lead pricing, §1.1).
 
@@ -177,6 +181,19 @@ Defined once in `src/lib/rfqFields.ts` (form UI, server validation and display a
 
 ## 5. Matching & ranking (current)
 
+### 5.1 Curated invitations (decision 2026-10-13, built — §1.1 step 2) — `src/lib/server/invites.ts`
+- A new requirement is offered to the **6 best-matched verified suppliers** (`FIRST_INVITES`), in matching order (nearest zone first, then score). They get "You're invited to quote — only a few matched suppliers are invited". Stored on the RFQ as `invites: { sellerId, at, reason }[]`.
+- **Only invited suppliers** (or ones that already quoted) see the requirement: lead feed, `/seller/rfq/[id]` (404 otherwise), Interested, Not for us, quote, messages. The "All open RFQs" tab is gone; the feed tab is "Invited to quote".
+- **More suppliers are invited when:**
+  - an invited supplier says **Not for us** → one replacement (`REPLACEMENT`);
+  - the buyer clicks **"+ Invite N more"** on the requirement page (4 at a time, `MORE_INVITES`) or **reopens** it (`BUYER`);
+  - **automatic top-up:** open, fewer than 2 live quotes, 48 h after the last invitation → 4 more, at most twice, and the buyer is told (`MORE_INVITED`). Runs from `hooks.server.ts`, at most every 5 min (`topUpQuietRequirements`);
+  - the admin clicks **"Invite more suppliers"** on a work-queue "No quotes yet" task (`ADMIN`);
+  - the buyer uses **"Ask for a quote"** on a supplier profile (`PICKED`, even outside the supplier's listed work).
+- **Edit & re-post:** invited suppliers who still match (or already quoted) stay invited and are told; the rest drop out; new matches top the list back up to 6 (`EDIT`).
+- Buyer's requirement page: **"Invited suppliers (N)"** with status (Invited / Interested / Quoted / Passed), message button, and contacts only for shortlisted ones. Admin: Requirements tab has an **Invited** column; supplier file shows **open invitations** next to matching requirements.
+- Ratings can only be given to suppliers invited to that requirement.
+
 **Nearby first (decision 2026-10-07).** Suppliers and leads are ordered by **pincode zone ascending, then km**:
 
 | Zone | Meaning |
@@ -198,20 +215,23 @@ The nearer of pincode hierarchy and km band wins (`nearZone` in `src/lib/geo.ts`
 ## 6. Quotation & negotiation (BUILT 2026-10-07)
 
 ### 6.1 Decisions (from user, 2026-10-07)
-1. Sellers **may quote outside their listed processes** — the buyer sees it flagged plus "things to consider" prompts.
+1. Sellers **may quote outside their listed processes** — the buyer sees it flagged plus "things to consider" prompts. *(Since 2026-10-13 only on requirements they are invited to — e.g. when the buyer picked them from the directory.)*
 2. Sellers see only the **number of quotes** on an RFQ, never others' prices.
 3. Buyers set a **quote deadline** when posting ("Quotes close in" 3 / 7 / 14 / 30 days, default 7). Negotiation can continue after it.
-4. **Unverified sellers can only mark Interested**; quoting and buyer contacts unlock after document verification.
+4. ~~Unverified sellers can only mark Interested~~ → *since 2026-10-13 unverified sellers are not invited at all (teaser count only)*; verified sellers can mark Interested, message, and quote on invitations. Buyer contacts come only with a shortlist (§3).
 5. Ranking: **nearby first by pincode zone**, then quotes compared **by price**.
 
 ### 6.2 End-to-end flow
 ```
-Buyer posts RFQ ──► notify every matching VERIFIED seller (NEW_LEAD)
+Buyer posts RFQ ──► invite the top 6 matched VERIFIED sellers (NEW_LEAD)
                     + teaser to matching sellers under review
-Seller lead feed ──► 👋 Interested (buyer notified)  /  Not for us (reason)
+                    (more invited on Not for us / buyer / 48 h few quotes / admin)
+Seller lead feed ──► 👋 Interested (buyer notified)  /  Not for us (reason → replacement invited)
+   (invited only) ├─► 💬 Message the buyer (contacts masked)
                  └─► Submit quotation (verified only, before deadline)
 Buyer RFQ page  ──► quotes compared by landed ₹/pc (+ things to consider)
-                 ├─► ⭐ Shortlist (seller notified)
+                 ├─► 💬 Message any invited supplier
+                 ├─► ⭐ Shortlist (seller notified) → phone & WhatsApp shared both ways
                  ├─► 🤝 Counter-offer: target price / lead time / payment terms + message
                  │     (max 3 rounds; one pending at a time)
                  │     Seller: Accept terms (→ new version) / Revise (→ new version) / Decline
@@ -232,11 +252,11 @@ Lowest price / fastest delivery · >25% below median (verify grade, tolerance, i
 
 ### 6.5 Dashboards
 - **Buyer dashboard:** pipeline tiles (Waiting for quotes · Quotes to compare · Negotiating · Awarded); per RFQ: interested, quotes, lowest ₹/pc, stage, "Review →" when a supplier moved last.
-- **Seller dashboard (lead feed):** stats (new matched leads, quotes sent, won, win rate); tabs Matched for you · All open RFQs · Interested · Quoted · Negotiating · Won · Lost; zone filter ("Show leads within …"); each lead shows ✓/✗ process coverage, distance + zone, budget, timeline, closes-in, quote count; actions Interested · Submit quotation · Not for us.
+- **Seller dashboard (lead feed):** stats (new invitations, quotes sent, won, win rate); tabs Invited to quote · Interested · Quoted · Negotiating · Won · Lost (invitations only, §5.1); zone filter ("Show leads within …"); each lead shows ✓/✗ process coverage, distance + zone, budget, timeline, closes-in, quote count; actions Interested · Submit quotation · Not for us.
 - **No Post Requirement for sellers anywhere** (nav, home, footer; `/rfq/new` redirects server-side).
 
 ### 6.6 Notifications (in-app) — `src/lib/server/notify.ts`
-Bell with unread count in the header + `/notifications` (click marks read & opens). Events: NEW_LEAD, LEAD_TEASER, INTERESTED, QUOTE_RECEIVED, QUOTE_REVISED, SHORTLISTED, COUNTER, COUNTER_ACCEPTED, COUNTER_DECLINED, AWARDED, NOT_SELECTED, DECLINED, WITHDRAWN, VERIFICATION (docs verified / rejected / ground verified).
+Bell with unread count in the header + `/notifications` (click marks read & opens). Events: NEW_LEAD (invitation), LEAD_TEASER, MESSAGE, MORE_INVITED, INTERESTED, QUOTE_RECEIVED, QUOTE_REVISED, SHORTLISTED, COUNTER, COUNTER_ACCEPTED, COUNTER_DECLINED, AWARDED, NOT_SELECTED, DECLINED, WITHDRAWN, VERIFICATION (docs verified / rejected / ground verified).
 
 ### 6.7 Decisions — round 3 (from user, 2026-10-07, all built)
 1. **Notifications:** mobile / Gmail push is **Phase 2**. For the demo: **in-app pop-up ("cloud") notifications** on the user's screen + "Latest updates" panel on both dashboards + bell.
@@ -257,6 +277,9 @@ Bell with unread count in the header + `/notifications` (click marks read & open
 2. Should managed-order buyers be able to **confirm delivery / raise an issue** from the tracker (two-way), or stay read-only?
 3. Should sellers get a **daily digest** of new leads in-app (and later on WhatsApp) instead of one notification per RFQ when volume grows?
 4. Ground sales team: do they need **call notes / follow-up status** per requirement in admin?
+5. **Distance data now decides who gets invited.** The demo pincode table (`geo.ts` `PIN_PREFIX`) only knows some 3-digit prefixes; unknown ones fall back to the state centre (in testing a 412xxx factory near Pune ranked behind Mumbai). Move to the India Post pincode dataset before real use.
+6. Invite fairness: new suppliers with no rating vs established ones — keep one slot for newcomers?
+7. Should the invite count (6) depend on order size or budget?
 
 ---
 
@@ -278,7 +301,7 @@ Bell with unread count in the header + `/notifications` (click marks read & open
 - **Logins:** buyer `/login/buyer`, seller `/login/seller`, admin `/admin/login` (first admin: `/admin/setup`).
 - **Data — two stores during the migration:**
   - **MongoDB** (persistent): users, sessions, login attempts, sellers (factories), ID counters.
-  - **In memory** `src/lib/server/db.ts` (starts empty, resets on restart): RFQs, quotes, responses, notifications, contacts, feedback, help tickets, concierge jobs, RFQ drafts.
+  - **In memory** `src/lib/server/db.ts` (starts empty, resets on restart): RFQs (incl. invitations), quotes, responses, messages, notifications, contacts, feedback, help tickets, concierge jobs, RFQ drafts.
 - **MongoDB setup:**
   - Local server as a Windows service · shell `mongosh` · GUI Compass.
   - Config: `.env` (git-ignored; template `.env.example`) → `MONGODB_URI=mongodb://127.0.0.1:27017` (use 127.0.0.1, not localhost), `MONGODB_DB=eyantrik`. Declared + validated in `src/env.ts` (`defineEnvVars`), imported server-only from `$app/env/private`.
@@ -306,13 +329,14 @@ Bell with unread count in the header + `/notifications` (click marks read & open
   - **Seller review screen** `/admin/review/seller/[id]`: automatic checks (GSTIN format, GST state = factory state, PAN in GSTIN, GSTIN not reused, GST certificate + photos present, location recognised, machines/processes listed) · all seller details · **documents viewed in place** (PDF/photo) · required checklist (`REVIEW_CHECKS`) — Approve is locked until all required boxes are ticked, and the server re-checks · "Send back for changes" with standard reasons (`CHANGE_REASONS`) · factory-visit form with required on-site checks (`VISIT_CHECKS`) · **history** (`seller.verificationLog`: who/when/what) + internal notes. Rules live in `src/lib/server/verification.ts`.
   - **Uploaded files are now kept** (`src/lib/server/files.ts`): bytes in `UPLOAD_DIR` (default `uploads/`, git-ignored), details in MongoDB `files`. Type decided from the extension; only PDF/PNG/JPG/WEBP shown inline, everything else downloads; strict 32-hex ids (no path tricks). Served to admins at `/admin/files/[id]`. Kept: seller GST certificate / Udyam / factory photos (saved only after the form is valid), buyer drawings, seller quotation attachments (`attachmentFiles`) — admin opens them from the Requirements tab.
   - **Next:** buyers open sellers' quote files and verified sellers open drawings after the NDA (role-scoped file routes); multiple admins with assignment; cloud storage (S3/R2) for production.
-- **Key files:** `taxonomy.ts` (shared categories) · `rfqFields.ts` (RFQ form) · `geo.ts` (distance + pincode zones) · `quote.ts` (quote options + landed-cost maths) · `orders.ts` (managed-order stages) · `server/matching.ts` (match + nearest-first) · `server/quotes.ts` (quote rules, form parsing, buyer insights) · `server/buyerQuotes.ts` (shortlist / counter / award / decline) · `server/notify.ts` (notifications) · `server/sellerForm.ts` (seller validation) · `routes/admin` (verification, help desk, concierge costing, contact log).
+- **Key files:** `server/invites.ts` (curated invitations, top-ups) · `server/messages.ts` + `components/MessageThread.svelte` (on-platform messages) · `contactMask.ts` (hide contacts in free text) · `contactsShared()` in `server/auth.ts` (contact rule) · `taxonomy.ts` (shared categories) · `rfqFields.ts` (RFQ form) · `geo.ts` (distance + pincode zones) · `quote.ts` (quote options + landed-cost maths) · `orders.ts` (managed-order stages) · `server/matching.ts` (match + nearest-first) · `server/quotes.ts` (quote rules, form parsing, buyer insights) · `server/buyerQuotes.ts` (shortlist / counter / award / decline) · `server/notify.ts` (notifications) · `server/sellerForm.ts` (seller validation) · `routes/admin` (verification, help desk, concierge costing, contact log).
 - **Auth files:** `src/hooks.server.ts` (guard) · `server/auth.ts` (sessions, authenticate, rolesFor, requireUser) · `server/users.ts` · `server/password.ts` · `server/portal.ts` + `PortalLogin.svelte` · routes `/login`, `/login/buyer`, `/login/seller`, `/admin/login`, `/admin/setup`, `/admin/logout`, `/logout`, `/denied`.
-- **Routes:** buyer `/buyer/dashboard`, `/buyer/rfq/[id]`, `/buyer/rfq/[id]/edit`, `/buyer/rfq/[id]/quotes/[quoteId]`, `/buyer/orders/[id]`, `/rfq/new` · seller `/seller` (lead feed), `/seller/rfq/[id]` (lead + quote + negotiation), `/seller/settings` (quote defaults), `/seller/onboarding` · shared `/notifications`, `/api/notifications` (pop-up poll), `/help`, `/sellers` · admin tabs: overview, requirements (sales), verification, add seller, help desk, concierge costing + order tracking, contact log.
+- **Routes:** buyer `/buyer/dashboard`, `/buyer/rfq/[id]`, `/buyer/rfq/[id]/edit`, `/buyer/rfq/[id]/quotes/[quoteId]`, `/buyer/rfq/[id]/suppliers/[sellerId]` (messages + contact once shortlisted), `/buyer/orders/[id]`, `/rfq/new` · seller `/seller` (lead feed), `/seller/rfq/[id]` (lead + quote + negotiation), `/seller/settings` (quote defaults), `/seller/onboarding` · shared `/notifications`, `/api/notifications` (pop-up poll), `/help`, `/sellers` · admin tabs: overview, requirements (sales), verification, add seller, help desk, concierge costing + order tracking, contact log.
 
 ---
 
 ## 9. Changelog
+- **2026-10-13** — Built §1.1 steps 1 & 2. **Contacts only after shortlist:** phone/WhatsApp shared both ways per requirement when the buyer shortlists or awards a quote; removed from directory, profiles and home; buyer summary for sellers before that; on-platform **messages** (buyer page `/buyer/rfq/[id]/suppliers/[sellerId]`, seller section on the requirement); phone/email/links in messages and quote notes masked until shared; call log only for shared pairs. **Curated invitations:** top 6 matched verified suppliers per requirement; replacements on Not for us, "Invite more", reopen, automatic top-up after 48 h with < 2 quotes, admin button, "Ask for a quote" from a supplier profile; edit keeps / drops / tops up invites; lead feed shows invitations only ("All open RFQs" removed); unverified sellers get teaser counts. Landing-page copy updated ("no spam calls"). Tested on a throwaway DB: 56/57 flow checks (the miss = demo pincode table, §6.9 #5) and 16/16 in real Edge with admin + buyer + seller tabs in one browser. Not tested end to end: the 48 h automatic top-up (time-based).
 - **2026-10-13** — Positioning decision (§1.1): eYantrik is a deal platform, not a lead directory like IndiaMART. Recorded where the current build drifts toward a directory and the new six-step method (contacts only after shortlist/award, curated top 5–8 sellers per RFQ, ratings from delivered orders, revenue from deals and tools never leads, daily seller tools, engineering depth). North-star metrics updated. Nothing built yet; build order to be decided.
 - **2026-10-12** — Fix: the admin console could reach a seller's profile (e.g. Akash's completeness ring on the admin login page or after clicking the logo), because shared pages and the admin login page fell back to whichever login the browser used last. Now **one workspace per tab** (admin / buyer / seller): shared pages show only the tab's own account, an admin tab sees the public site as a visitor, crossing into another role's area asks "Switch this tab?", and the server never gives admin pages buyer/seller login data. Verified in a real multi-tab browser 20/20.
 - **2026-10-12** — Separate home pages for visitor / buyer / seller (buyer strip with open requirements & waiting quotes; seller hero, lead stats, seller steps & benefits, open requirements by type of work, no buyer parts). Seller **profile completeness ring** (LinkedIn-style) on the header avatar, dashboard, home, My profile and admin; new **My profile** page (`/seller/profile`) with checklist and edit form (verified identity locked, add photos). **Fixed mandatory attributes**: main type of work, order sizes, team size, industries (+ optional largest part, tolerance, fixed certifications). Matching rewards complete profiles and matching order sizes. Verified 29/29 on a throwaway test database.

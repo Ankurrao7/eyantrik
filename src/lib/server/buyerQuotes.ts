@@ -10,6 +10,7 @@ import { sellersById } from './sellers.ts';
 import { addEvent, buyerInsights, counterRounds, isLive, latest, pendingCounter } from './quotes.ts';
 import { landed, MAX_COUNTER_ROUNDS, inr } from '../quote.ts';
 import { pickedProcesses } from '../rfqFields.ts';
+import { maskContacts } from '../contactMask.ts';
 
 export function ownRfq(locals: App.Locals, url: URL, id: string) {
 	const user = requireUser(locals, url, ['BUYER']);
@@ -83,7 +84,7 @@ export async function shortlist(rfq: Rfq, q: Quote): Promise<string | null> {
 	if (q.status !== 'SUBMITTED') return q.status === 'SHORTLISTED' ? null : 'Only new quotations can be shortlisted.';
 	q.status = 'SHORTLISTED';
 	addEvent(q, { by: 'BUYER', kind: 'SHORTLIST' });
-	await notifySeller(q.sellerId, { type: 'SHORTLISTED', title: 'You are shortlisted ⭐', body: `The buyer shortlisted your quote for ${rfq.values.partName}.`, link: link(q) });
+	await notifySeller(q.sellerId, { type: 'SHORTLISTED', title: 'You are shortlisted ⭐', body: `The buyer shortlisted your quote for ${rfq.values.partName} — their contact details are now on the requirement page.`, link: link(q) });
 	return null;
 }
 
@@ -91,7 +92,7 @@ export async function counterOffer(rfq: Rfq, q: Quote, data: FormData): Promise<
 	if (rfq.status !== 'OPEN') return { error: 'This requirement is closed.' };
 	if (!['SUBMITTED', 'SHORTLISTED', 'NEGOTIATING'].includes(q.status)) return { error: 'You can only negotiate on an active quotation.' };
 	if (pendingCounter(q)) return { error: 'Your previous counter-offer is still waiting for the supplier’s reply.' };
-	if (counterRounds(q) >= MAX_COUNTER_ROUNDS) return { error: `Maximum ${MAX_COUNTER_ROUNDS} counter-offers reached — accept, decline, or call the supplier.` };
+	if (counterRounds(q) >= MAX_COUNTER_ROUNDS) return { error: `Maximum ${MAX_COUNTER_ROUNDS} counter-offers reached — accept, decline, or message the supplier.` };
 
 	const unitPrice = data.get('targetUnitPrice')?.toString().trim() ?? '';
 	const bulkDays = data.get('targetBulkDays')?.toString().trim() ?? '';
@@ -120,7 +121,7 @@ export async function counterOffer(rfq: Rfq, q: Quote, data: FormData): Promise<
 	q.status = 'NEGOTIATING';
 	addEvent(q, { by: 'BUYER', kind: 'COUNTER', target, message: message || undefined });
 	const bits = [target.unitPrice && `${inr(target.unitPrice)}/pc`, target.bulkDays && `${target.bulkDays} days`, target.paymentTerms].filter(Boolean).join(' · ');
-	await notifySeller(q.sellerId, { type: 'COUNTER', title: 'Counter-offer from buyer 🤝', body: `For ${rfq.values.partName}: ${bits || message}. Accept, revise or decline.`, link: link(q) });
+	await notifySeller(q.sellerId, { type: 'COUNTER', title: 'Counter-offer from buyer 🤝', body: `For ${rfq.values.partName}: ${bits || maskContacts(message)}. Accept, revise or decline.`, link: link(q) });
 	return {};
 }
 
@@ -134,7 +135,7 @@ export async function award(rfq: Rfq, q: Quote): Promise<string | null> {
 	rfq.outcome = 'DEAL_DONE';
 	rfq.awardedQuoteId = q.id;
 	rfq.updatedAt = now();
-	await notifySeller(q.sellerId, { type: 'AWARDED', title: 'You won the order! 🏆', body: `${rfq.values.partName} (${rfq.id}) was awarded to you at ${inr(landed(latest(q)).perPiece)}/pc landed. Call the buyer to confirm the PO.`, link: link(q) });
+	await notifySeller(q.sellerId, { type: 'AWARDED', title: 'You won the order! 🏆', body: `${rfq.values.partName} (${rfq.id}) was awarded to you at ${inr(landed(latest(q)).perPiece)}/pc landed. Contacts are now shared — confirm the PO with the buyer.`, link: link(q) });
 	for (const other of db.quotes.filter((x) => x.rfqId === rfq.id && x.id !== q.id && isLive(x))) {
 		other.status = 'NOT_SELECTED';
 		other.updatedAt = now();

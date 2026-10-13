@@ -1,12 +1,13 @@
 # eYantrik
 
-B2B manufacturing marketplace for India. Buyers post part requirements (RFQs), verified job shops nearby send quotations, and the two sides compare, negotiate and award. The eYantrik team verifies sellers and can manage orders end to end.
+B2B manufacturing marketplace for India. Buyers post part requirements (RFQs), the few best-matched verified job shops nearby are invited to quote, and the two sides message, compare, negotiate and award on the platform — no lead selling, no spam calls. The eYantrik team verifies sellers and can manage orders end to end.
 
 ## Features
 
 - **Three role-locked portals:** buyer, seller and admin, each with its own login and session — all three can be open in one browser, one tab each. One mobile number can have one buyer and one seller account.
 - **Requirements (RFQs):** a detailed form (process, material, quantity, tolerances, drawings, delivery city and deadline). Buyers can edit a requirement until it is awarded.
-- **Matching:** sellers are matched by process, material and industry, nearest first (pincode zone, then distance).
+- **Curated invitations:** each requirement goes to the 6 best-matched verified sellers (process, material, industry; nearest first by pincode zone, then distance). More are invited when one passes, when the buyer asks, or automatically when few quotes come in.
+- **Contacts after shortlist:** buyers and sellers talk through on-platform messages; phone & WhatsApp are shared both ways only when the buyer shortlists a quote.
 - **Quotations:** versioned quotes with a landed cost per piece, buyer shortlisting, counter-offers (up to 3 rounds) and awarding.
 - **Seller onboarding:** self-registration with GST, machines and documents, followed by admin verification (documents, then a ground visit).
 - **Admin console:** KPIs, the verification queue, adding sellers after a factory visit, the help desk, concierge costing and order tracking.
@@ -71,6 +72,8 @@ src/
 │   │   ├── auth.ts         login, sessions, role rules
 │   │   ├── db.ts           in-memory store (being migrated to MongoDB)
 │   │   ├── matching.ts     seller ↔ requirement matching
+│   │   ├── invites.ts      curated invitations (top 6, top-ups)
+│   │   ├── messages.ts     buyer ↔ supplier messages
 │   │   ├── quotes.ts       quotation rules
 │   │   └── …
 │   └── taxonomy.ts, rfqFields.ts, quote.ts, geo.ts …   shared logic
@@ -90,7 +93,7 @@ The move to MongoDB is happening in stages:
 | Stored in | Data |
 |---|---|
 | **MongoDB** (persistent) | users, sessions, login attempts, sellers |
-| **Memory** (reset on restart) | requirements, quotes, notifications, help desk, orders |
+| **Memory** (reset on restart) | requirements (incl. invitations), quotes, messages, notifications, help desk, orders |
 
 Next stages, in order: requirements, then quotes, then notifications, then admin data. See [docs/brain.md](docs/brain.md) for the full product notes.
 

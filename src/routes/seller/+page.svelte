@@ -12,8 +12,7 @@
 	const s = $derived(data.seller);
 
 	const tabs = [
-		{ id: 'matched', label: 'Matched for you' },
-		{ id: 'all', label: 'All open RFQs' },
+		{ id: 'matched', label: 'Invited to quote' },
 		{ id: 'interested', label: 'Interested' },
 		{ id: 'quoted', label: 'Quoted' },
 		{ id: 'negotiating', label: 'Negotiating' },
@@ -71,7 +70,7 @@
 	{/if}
 
 	<div class="grid four mt">
-		<div class="stat"><div class="v">{data.counts.matched}</div><div class="k">New matched leads</div></div>
+		<div class="stat"><div class="v">{data.counts.matched}</div><div class="k">New invitations</div></div>
 		<div class="stat"><div class="v">{data.stats.quotesSent}</div><div class="k">Quotations sent</div></div>
 		<div class="stat"><div class="v">{data.stats.won}</div><div class="k">Orders won</div></div>
 		<div class="stat"><div class="v">{data.stats.winRate === null ? '—' : data.stats.winRate + '%'}</div><div class="k">Win rate</div></div>
@@ -86,7 +85,7 @@
 				{#each steps as st}<li class:done={st.done}><span class="dot">{st.done ? '✓' : ''}</span>{st.label}</li>{/each}
 			</ol>
 			{#if !data.verified}
-				<p class="small muted mb-0">You can browse leads and mark <strong>Interested</strong> now. Sending quotations and seeing buyer contacts unlock once your documents are verified.</p>
+				<p class="small muted mb-0">Once your documents are verified, you start getting <strong>invited</strong> to quote on matching requirements. Buyers invite only a few suppliers each, so every invitation is a real chance.</p>
 			{:else}
 				<p class="small muted mb-0">You're live. Ground verification by our team will rank you higher.</p>
 			{/if}
@@ -109,9 +108,15 @@
 		<span class="muted">Sorted nearest first from your pincode {s.pincode}.</span>
 	</form>
 
+	<p class="small muted">Each requirement is offered to only a few best-matched suppliers — nearest first, then the best fit and track record. A complete profile and good ratings get you invited more often.</p>
+
+	{#if data.teaserCount}
+		<div class="alert info">🔒 <strong>{data.teaserCount} open requirement{data.teaserCount === 1 ? '' : 's'} match{data.teaserCount === 1 ? 'es' : ''} your work.</strong> Verified suppliers get invited to quote on requirements like these — finish verification to be one of them.</div>
+	{/if}
+
 	{#if data.list.length === 0}
 		<div class="card center muted">
-			{#if data.tab === 'matched'}No new matching requirements right now — we'll notify you the moment one is posted. Check <a href={tabHref('all')}>All open RFQs</a> too.
+			{#if data.tab === 'matched'}No new invitations right now — we'll notify you the moment a buyer's requirement is offered to you.
 			{:else}Nothing here yet.{/if}
 		</div>
 	{:else}
@@ -126,6 +131,7 @@
 						</div>
 						<div class="row gap">
 							{#if l.myQuote}<span class="badge {QUOTE_STATUS_CLASS[l.myQuote.status]}">{QUOTE_STATUS_LABEL[l.myQuote.status]}</span>{/if}
+							{#if l.messages}<a class="badge neutral" href="/seller/rfq/{l.id}#messages">💬 {l.messages}</a>{/if}
 							<span class="badge neutral">{l.quoteCount === 0 ? 'No quotes yet — be first' : `${l.quoteCount} quote${l.quoteCount === 1 ? '' : 's'} so far`}</span>
 						</div>
 					</div>

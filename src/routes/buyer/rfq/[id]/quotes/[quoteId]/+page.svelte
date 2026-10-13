@@ -39,7 +39,7 @@
 	<a href="/buyer/rfq/{data.rfq.id}" class="small">← All quotations for {data.rfq.title}</a>
 
 	{#if page.url.searchParams.get('awarded') === '1'}
-		<div class="alert ok mt"><strong>🏆 Order awarded to {s.companyName}!</strong> They've been notified, and other suppliers were told politely. Next: call them to confirm the purchase order. Don't forget to rate them after delivery.</div>
+		<div class="alert ok mt"><strong>🏆 Order awarded to {s.companyName}!</strong> They've been notified, and other suppliers were told politely. Their phone & WhatsApp are now below — confirm the purchase order with them. Don't forget to rate them after delivery.</div>
 	{/if}
 	{#if form && 'message' in form && form.message}<div class="alert ok mt" role="status">{form.message}</div>{/if}
 	{#if form && 'error' in form && form.error}<div class="alert bad mt" role="alert">{form.error}</div>{/if}
@@ -143,7 +143,7 @@
 						</form>
 					{/if}
 					{#if q.status === 'SUBMITTED'}
-						<form method="POST" action="?/shortlist" use:enhance={submit} class="mt"><button class="btn ghost block" disabled={busy}>⭐ Shortlist</button></form>
+						<form method="POST" action="?/shortlist" use:enhance={submit} class="mt"><button class="btn ghost block" disabled={busy}>⭐ Shortlist</button><span class="tiny muted">Shares phone & WhatsApp with each other.</span></form>
 					{/if}
 					<button class="linkish small mt" onclick={() => (showDecline = !showDecline)}>Decline this quote</button>
 					{#if showDecline}
@@ -191,7 +191,7 @@
 					{:else if data.pendingCounter}
 						<p class="small muted mb-0">Your offer is with the supplier.</p>
 					{:else}
-						<p class="small muted mb-0">No counter-offer rounds left. Accept, decline, or call the supplier to close the gap.</p>
+						<p class="small muted mb-0">No counter-offer rounds left. Accept, decline, or message the supplier to close the gap.</p>
 					{/if}
 				</section>
 			{/if}
@@ -202,8 +202,9 @@
 					<p class="mb-0"><strong>{s.contact.person}</strong></p>
 					<ContactButtons size="sm" phone={s.contact.phone} whatsapp={s.contact.whatsapp} sellerId={s.id} rfqId={data.rfq.id} message={`Hi, about your quotation for ${data.rfq.title} (${data.rfq.id}) on eYantrik.`} />
 				{:else}
-					<p class="small muted mb-0">🔒 Contacts locked.</p>
+					<p class="small muted mb-0">🔒 Phone & WhatsApp are shared both ways when you <strong>shortlist</strong> this quote.</p>
 				{/if}
+				<a class="btn ghost sm mt" href="/buyer/rfq/{data.rfq.id}/suppliers/{s.id}">💬 {data.messages ? `Messages (${data.messages})` : 'Message the supplier'}</a>
 				<p class="tiny muted mt mb-0">Want eYantrik to handle this order for you? <a href="/help?rfq={data.rfq.id}">Need assistance</a></p>
 			</section>
 		</aside>

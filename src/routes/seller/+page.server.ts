@@ -1,7 +1,9 @@
 // src/routes/seller/+page.server.ts — Seller Dashboard / Lead Feed
 import { fail, redirect } from '@sveltejs/kit';
-import { canSeeBuyerContacts, requireUser } from '#lib/server/auth.ts';
-import { db, now, sellerRating, type Seller, type User } from '#lib/server/db.ts';
+import { isVerifiedSeller, requireUser } from '#lib/server/auth.ts';
+import { db, isInvited, now, sellerRating, type Seller, type User } from '#lib/server/db.ts';
+import { inviteMore } from '#lib/server/invites.ts';
+import { messageCount } from '#lib/server/messages.ts';
 import { notificationsFor } from '#lib/server/notify.ts';
 import { scoreMatch } from '#lib/server/matching.ts';
 import { findSellerById } from '#lib/server/sellers.ts';
@@ -13,7 +15,7 @@ import { normalizeShop, shopLabel } from '#lib/processes.ts';
 import { profileScore } from '#lib/profileScore.ts';
 import type { Actions, PageServerLoad } from './$types';
 
-const TABS = ['matched', 'all', 'interested', 'quoted', 'negotiating', 'won', 'lost'] as const;
+const TABS = ['matched', 'interested', 'quoted', 'negotiating', 'won', 'lost'] as const;
 type Tab = (typeof TABS)[number];
 
 const NOT_FOR_US_REASONS = [
@@ -36,13 +38,15 @@ async function currentSeller(locals: App.Locals, url: URL): Promise<{ user: User
 
 export const load: PageServerLoad = async ({ locals, url }) => {
 	const { user, seller } = await currentSeller(locals, url);
-	const verified = await canSeeBuyerContacts(user);
+	const verified = await isVerifiedSeller(user);
 	const tabParam = url.searchParams.get('tab') as Tab | null;
 	const tab: Tab = tabParam && TABS.includes(tabParam) ? tabParam : 'matched';
 	const maxZone = Math.min(4, Math.max(0, Number.parseInt(url.searchParams.get('zone') ?? '4', 10) || 4));
 
+	// Only requirements this supplier was invited to (or already quoted on) — curated, not broadcast.
+	// Hidden = the buyer's account was suspended/deactivated by the admin team.
 	const rows = db.rfqs
-		.filter((rfq) => !rfq.hidden) // buyer's account suspended/deactivated by the admin team
+		.filter((rfq) => !rfq.hidden && (isInvited(rfq, seller.id) || db.quotes.some((q) => q.rfqId === rfq.id && q.sellerId === seller.id)))
 		.map((rfq) => {
 			const m = scoreMatch(seller, rfq);
 			const quote = db.quotes.find((q) => q.rfqId === rfq.id && q.sellerId === seller.id);
@@ -54,7 +58,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			else if (quote?.status === 'NEGOTIATING' && rfq.status === 'OPEN') bucket = 'negotiating';
 			else if (quote && ['SUBMITTED', 'SHORTLISTED'].includes(quote.status) && rfq.status === 'OPEN') bucket = 'quoted';
 			else if (open && response?.kind === 'INTERESTED') bucket = 'interested';
-			else if (open && response?.kind !== 'NOT_FOR_US') bucket = m.score > 0 ? 'matched' : 'all';
+			else if (open && response?.kind !== 'NOT_FOR_US') bucket = 'matched';
 			const picked = pickedProcesses(rfq.values);
 			const wanted = picked.length ? picked : m.covers;
 			return {
@@ -74,6 +78,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 				quotingOpen: open,
 				quoteCount: liveQuoteCount(rfq.id),
 				interested: response?.kind === 'INTERESTED',
+				messages: messageCount(rfq.id, seller.id),
 				myQuote: quote
 					? { status: quote.status, version: latest(quote).v, perPiece: landed(latest(quote)).perPiece, counterPending: !!pendingCounter(quote) }
 					: null,
@@ -82,12 +87,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		})
 		.filter((r) => r.bucket !== 'hidden');
 
-	const counts = Object.fromEntries(
-		TABS.map((t) => [t, rows.filter((r) => (t === 'all' ? r.bucket === 'all' || r.bucket === 'matched' : r.bucket === t)).length])
-	) as Record<Tab, number>;
+	const counts = Object.fromEntries(TABS.map((t) => [t, rows.filter((r) => r.bucket === t).length])) as Record<Tab, number>;
 
 	const list = rows
-		.filter((r) => (tab === 'all' ? r.bucket === 'all' || r.bucket === 'matched' : r.bucket === tab))
+		.filter((r) => r.bucket === tab)
 		.filter((r) => r.zone <= maxZone)
 		.sort(byNearness);
 
@@ -117,6 +120,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			pincode: seller.pincode
 		},
 		verified,
+		// not verified yet: how many open requirements match their work (they are not invited until verified)
+		teaserCount: verified ? 0 : db.rfqs.filter((r) => !r.hidden && isQuotingOpen(r) && scoreMatch(seller, r).score > 0).length,
 		tab,
 		maxZone,
 		counts,
@@ -141,13 +146,15 @@ export const actions: Actions = {
 		const rfqId = data.get('rfqId')?.toString();
 		const reason = data.get('reason')?.toString() ?? '';
 		const rfq = db.rfqs.find((r) => r.id === rfqId);
-		if (!rfq || rfq.hidden) return fail(404, { error: 'Requirement not found.' });
+		if (!rfq || rfq.hidden || !isInvited(rfq, seller.id)) return fail(404, { error: 'Requirement not found.' });
 		if (!NOT_FOR_US_REASONS.includes(reason)) return fail(400, { error: 'Pick a reason — it helps us send you better leads.' });
 		if (db.quotes.some((q) => q.rfqId === rfq.id && q.sellerId === seller.id && q.status !== 'WITHDRAWN'))
 			return fail(409, { error: 'You already quoted on this — withdraw the quote instead.' });
 		const existing = sellerResponse(rfq.id, seller.id);
+		const alreadyPassed = existing?.kind === 'NOT_FOR_US';
 		if (existing) Object.assign(existing, { kind: 'NOT_FOR_US', reason, at: now() });
 		else db.responses.push({ rfqId: rfq.id, sellerId: seller.id, kind: 'NOT_FOR_US', reason, at: now() });
+		if (!alreadyPassed) await inviteMore(rfq, 1, 'REPLACEMENT'); // keep the buyer's shortlist full
 		return { ok: true, hidden: rfq.id };
 	}
 };

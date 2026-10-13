@@ -29,7 +29,7 @@
 
 <main class="container">
 	<h1>{heading}</h1>
-	<p class="muted">{data.total} verified supplier{data.total === 1 ? '' : 's'} · contacts unlock after you post a requirement</p>
+	<p class="muted">{data.total} verified supplier{data.total === 1 ? '' : 's'} · ask for quotes from the ones you like</p>
 
 	<div class="grid sidebar mt">
 		<aside class="card flat">
@@ -64,10 +64,9 @@
 		</aside>
 
 		<section>
-			{#if data.lockReason !== 'role' && !data.sellers[0]?.contact && data.sellers.length}
+			{#if data.lockReason !== 'role' && data.sellers.length}
 				<div class="alert info">
-					<strong>Want to call these suppliers?</strong>
-					{#if data.lockReason === 'login'}Login free and post your requirement — every supplier's phone & WhatsApp will unlock.{:else}Post one requirement and every supplier's phone & WhatsApp will unlock.{/if}
+					<strong>No cold calls, no spam.</strong> Post your requirement and the best-matched verified suppliers are invited to quote — or open a supplier and ask them for a quote. Phone & WhatsApp are shared once you shortlist a quote.
 					<div class="mt"><a class="btn sm" href={data.lockReason === 'login' ? '/login/buyer?redirectTo=%2Frfq%2Fnew' : '/rfq/new'}>Post requirement</a></div>
 				</div>
 			{/if}

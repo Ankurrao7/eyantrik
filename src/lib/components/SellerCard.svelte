@@ -3,20 +3,15 @@
 	import { PROCESS_LABEL, TEAM_SIZE_LABEL } from '../taxonomy.ts';
 	import { SHOP_BY_ID } from '../processes.ts';
 	import VerificationBadge from './VerificationBadge.svelte';
-	import ContactButtons from './ContactButtons.svelte';
 
 	let {
 		seller,
 		highlight = [],
-		rfqId,
-		rfqTitle,
 		lockReason = 'login'
 	}: {
 		seller: PublicSeller;
 		highlight?: string[];
-		rfqId?: string;
-		rfqTitle?: string;
-		lockReason?: 'login' | 'post-rfq' | 'role';
+		lockReason?: 'login' | 'buyer' | 'role';
 	} = $props();
 
 	const machineCount = $derived(seller.machines.reduce((n, m) => n + m.count, 0));
@@ -54,27 +49,14 @@
 	</div>
 
 	<div class="mt">
-		{#if seller.contact}
-			<div class="small mb-0"><strong>{seller.contact.person}</strong></div>
-			<ContactButtons
-				size="sm"
-				phone={seller.contact.phone}
-				whatsapp={seller.contact.whatsapp}
-				sellerId={seller.id}
-				{rfqId}
-				message={rfqTitle ? `Hi, I found ${seller.companyName} on eYantrik. I need: ${rfqTitle} (${rfqId}).` : `Hi, I found ${seller.companyName} on eYantrik.`}
-			/>
-		{:else}
+		<!-- Contacts are never listed: they are shared when a buyer shortlists this supplier's quote (2026-10-13). -->
+		{#if lockReason !== 'role'}
 			<div class="locked row between gap small">
-				<span><span class="blur">📞 +91 98XXX XXXXX</span> &nbsp;🔒
-					{#if lockReason === 'post-rfq'}Post a requirement to unlock contacts
-					{:else if lockReason === 'role'}Contacts are visible to buyers
-					{:else}Login & post a requirement to see contacts{/if}
-				</span>
-				{#if lockReason === 'post-rfq'}
-					<a class="btn sm" href="/rfq/new">Post requirement</a>
-				{:else if lockReason === 'login'}
-					<a class="btn sm" href="/login/buyer?redirectTo=%2Frfq%2Fnew">Login free</a>
+				<span>🔒 Phone & WhatsApp are shared when you shortlist their quote</span>
+				{#if lockReason === 'buyer'}
+					<a class="btn sm" href="/sellers/{seller.slug}#ask">Ask for a quote</a>
+				{:else}
+					<a class="btn sm" href="/login/buyer?redirectTo=%2Frfq%2Fnew">Get quotes free</a>
 				{/if}
 			</div>
 		{/if}

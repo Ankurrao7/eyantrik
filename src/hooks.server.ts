@@ -1,5 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import type { Handle, HandleServerError } from '@sveltejs/kit/hooks';
+import { topUpQuietRequirements } from '#lib/server/invites.ts';
 import { ACTIVE_COOKIE, blockedRolesFor, identityFor, LANE_COOKIE, PORTAL_LOGIN, readLane, resolveSessions, rolesFor, setActive, visibleSessions, type Portal } from '#lib/server/auth.ts';
 
 /**
@@ -14,6 +15,8 @@ import { ACTIVE_COOKIE, blockedRolesFor, identityFor, LANE_COOKIE, PORTAL_LOGIN,
  */
 export const handle: Handle = async ({ event, resolve }) => {
 	const { pathname, search } = event.url;
+	// Requirements with few quotes get more suppliers invited (throttled inside; never blocks the request).
+	topUpQuietRequirements().catch((e) => console.error('invite top-up failed', e));
 	const signedIn = await resolveSessions(event.cookies, pathname);
 	const active = event.cookies.get(ACTIVE_COOKIE);
 	const lane = readLane(event.cookies.get(LANE_COOKIE));

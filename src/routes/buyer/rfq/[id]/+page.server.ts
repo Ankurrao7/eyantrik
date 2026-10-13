@@ -1,10 +1,12 @@
 import { fail } from '@sveltejs/kit';
-import { canSeeSellerContacts } from '#lib/server/auth.ts';
+import { contactsShared } from '#lib/server/auth.ts';
 import { ownRfq, quoteRows, releaseQuotes, shortlist, type QuoteSort } from '#lib/server/buyerQuotes.ts';
-import { db, nextId, now } from '#lib/server/db.ts';
-import { matchedSellersFor, toPublicSeller } from '#lib/server/matching.ts';
-import { addRating, findSellerById, sellersById } from '#lib/server/sellers.ts';
-import { interestedCount, isQuotingOpen } from '#lib/server/quotes.ts';
+import { db, isInvited, nextId, now } from '#lib/server/db.ts';
+import { inviteMore, MORE_INVITES, uninvitedMatches } from '#lib/server/invites.ts';
+import { scoreMatch, toPublicSeller } from '#lib/server/matching.ts';
+import { messageCount } from '#lib/server/messages.ts';
+import { addRating, findSellerById, isListed, sellersById } from '#lib/server/sellers.ts';
+import { interestedCount, isQuotingOpen, sellerResponse } from '#lib/server/quotes.ts';
 import { pickedProcesses } from '#lib/rfqFields.ts';
 import { normalizeShop, shopLabel } from '#lib/processes.ts';
 import type { Actions, PageServerLoad } from './$types';
@@ -13,18 +15,29 @@ const SORTS: QuoteSort[] = ['price', 'distance', 'lead', 'rating'];
 
 export const load: PageServerLoad = async ({ params, locals, url }) => {
 	const { user, rfq } = ownRfq(locals, url, params.id);
-	const showContacts = canSeeSellerContacts(user);
 
-	const matches = (await matchedSellersFor(rfq)).map((m) => ({
-		seller: toPublicSeller(m.seller, showContacts),
-		covers: m.covers,
-		distanceKm: m.distanceKm,
-		materialMatch: m.materialMatch,
-		zone: m.zone,
-		quoted: db.quotes.some((q) => q.rfqId === rfq.id && q.sellerId === m.seller.id && q.versions.length),
-		contacted: db.contacts.some((c) => c.rfqId === rfq.id && c.fromUserId === user.id && c.toSellerId === m.seller.id),
-		contactedYou: db.contacts.some((c) => c.rfqId === rfq.id && c.toBuyerUserId === user.id && c.fromUserId === m.seller.userId)
-	}));
+	// The suppliers invited to quote (curated, best first). Contacts only for those whose quote was shortlisted.
+	const invitedSellers = await sellersById(rfq.invites.map((i) => i.sellerId));
+	const invited = rfq.invites
+		.filter((i) => invitedSellers.has(i.sellerId) && isListed(invitedSellers.get(i.sellerId)!))
+		.map((i) => {
+			const seller = invitedSellers.get(i.sellerId)!;
+			const m = scoreMatch(seller, rfq);
+			const response = sellerResponse(rfq.id, seller.id);
+			const quote = db.quotes.find((q) => q.rfqId === rfq.id && q.sellerId === seller.id && q.versions.length);
+			return {
+				seller: toPublicSeller(seller, contactsShared(rfq, seller.id)),
+				covers: m.covers,
+				distanceKm: m.distanceKm,
+				materialMatch: m.materialMatch,
+				zone: m.zone,
+				reason: i.reason,
+				state: quote ? ('QUOTED' as const) : response?.kind === 'INTERESTED' ? ('INTERESTED' as const) : response?.kind === 'NOT_FOR_US' ? ('PASSED' as const) : ('INVITED' as const),
+				messages: messageCount(rfq.id, seller.id),
+				contacted: db.contacts.some((c) => c.rfqId === rfq.id && c.fromUserId === user.id && c.toSellerId === seller.id)
+			};
+		});
+	const moreAvailable = !rfq.hidden && isQuotingOpen(rfq) ? (await uninvitedMatches(rfq)).length : 0;
 
 	const responses = db.responses.filter((r) => r.rfqId === rfq.id);
 	const rfqFeedback = db.feedback.filter((f) => f.rfqId === rfq.id);
@@ -47,7 +60,9 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
 			.map((r) => nameOf(r.sellerId)),
 		interestedTotal: interestedCount(rfq.id),
 		passed: responses.filter((r) => r.kind === 'NOT_FOR_US').length,
-		matches,
+		invited,
+		moreAvailable,
+		moreBatch: MORE_INVITES,
 		feedback,
 		wanted: pickedProcesses(rfq.values),
 		workType: shopLabel(normalizeShop(String(rfq.values.commodityCategory ?? ''))),
@@ -69,7 +84,7 @@ export const actions: Actions = {
 
 		const errors: Record<string, string> = {};
 		const seller = sellerId ? await findSellerById(sellerId) : null;
-		if (!seller) errors.sellerId = 'Choose the supplier.';
+		if (!seller || !isInvited(rfq, seller.id)) errors.sellerId = 'Choose one of the suppliers invited to this requirement.';
 		if (outcome !== 'DEAL_DONE' && outcome !== 'NO_DEAL') errors.outcome = 'Did the deal happen?';
 		if (!Number.isInteger(rating) || rating < 1 || rating > 5) errors.rating = 'Give a rating from 1 to 5 stars.';
 		if (Object.keys(errors).length) return fail(400, { action: 'feedback' as const, errors });
@@ -112,6 +127,13 @@ export const actions: Actions = {
 		return err ? fail(409, { action: 'shortlist' as const, error: err }) : { action: 'shortlist' as const, ok: true };
 	},
 
+	inviteMore: async ({ params, locals, url }) => {
+		const { rfq } = ownRfq(locals, url, params.id);
+		if (rfq.status !== 'OPEN' || !isQuotingOpen(rfq)) return fail(409, { action: 'inviteMore' as const, error: 'The quotation window is closed — reopen the requirement first.' });
+		const n = await inviteMore(rfq, MORE_INVITES, 'BUYER');
+		return n ? { action: 'inviteMore' as const, ok: true, invitedMore: n } : fail(409, { action: 'inviteMore' as const, error: 'No more matching verified suppliers right now. Our help desk can find one for you.' });
+	},
+
 	reopen: async ({ params, locals, url }) => {
 		const { rfq } = ownRfq(locals, url, params.id);
 		if (rfq.status === 'OPEN') return fail(409, { action: 'reopen' as const, error: 'This requirement is already open.' });
@@ -122,6 +144,7 @@ export const actions: Actions = {
 		rfq.quoteDeadline = new Date(Date.now() + 7 * 86_400_000).toISOString();
 		rfq.reopenCount += 1;
 		rfq.updatedAt = now();
-		return { action: 'reopen' as const, ok: true };
+		const n = await inviteMore(rfq, MORE_INVITES, 'BUYER'); // "try other suppliers"
+		return { action: 'reopen' as const, ok: true, invitedMore: n };
 	}
 };

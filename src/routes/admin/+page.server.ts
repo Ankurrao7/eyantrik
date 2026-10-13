@@ -14,6 +14,7 @@ import { profileScore } from '#lib/profileScore.ts';
 import { shopLabel } from '#lib/processes.ts';
 import { notify, notifySeller } from '#lib/server/notify.ts';
 import { interestedCount, isLive, latest } from '#lib/server/quotes.ts';
+import { inviteMore, MORE_INVITES } from '#lib/server/invites.ts';
 import { landed } from '#lib/quote.ts';
 import { ORDER_STAGES, ORDER_STAGE_LABEL } from '#lib/orders.ts';
 import type { Actions, PageServerLoad } from './$types';
@@ -99,7 +100,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		if (!r.salesCalledAt)
 			queue.push({ type: 'CALL', id: r.id, title: `${title} · ${r.values.quantity} pcs`, sub: `${buyer ? `${buyer.name}, ${buyer.companyName}` : 'Buyer'} · ${r.values.deliveryCity}`, at: r.createdAt, href: `/admin?tab=requirements#${r.id}`, cta: 'Call buyer', phone: buyer?.phone });
 		else if (liveQuotes === 0 && Date.now() - Date.parse(r.createdAt) > 48 * H)
-			queue.push({ type: 'NO_QUOTES', id: r.id, title: `${title} · ${r.values.quantity} pcs`, sub: `No quotes after ${Math.round((Date.now() - Date.parse(r.createdAt)) / (24 * H))} days — offer eYantrik's help`, at: r.createdAt, href: `/admin?tab=requirements#${r.id}`, cta: 'Offer help', phone: buyer?.phone });
+			queue.push({ type: 'NO_QUOTES', id: r.id, title: `${title} · ${r.values.quantity} pcs`, sub: `No quotes after ${Math.round((Date.now() - Date.parse(r.createdAt)) / (24 * H))} days · ${r.invites.length} supplier${r.invites.length === 1 ? '' : 's'} invited — invite more or offer eYantrik's help`, at: r.createdAt, href: `/admin?tab=requirements#${r.id}`, cta: 'Offer help', phone: buyer?.phone });
 	}
 	queue.sort((x, y) => x.at.localeCompare(y.at));
 
@@ -134,6 +135,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			budget: String(r.values.budgetRange ?? ''),
 			buyer: buyer ? { name: buyer.name, company: buyer.companyName, phone: buyer.phone } : null,
 			status: r.awardedQuoteId ? 'AWARDED' : r.status,
+			invited: r.invites.length,
 			interested: interestedCount(r.id),
 			quotes: live.length,
 			lowest: live.length ? Math.min(...live.map((q) => landed(latest(q)).perPiece)) : null,
@@ -241,6 +243,16 @@ export const actions: Actions = {
 		rfq.salesBy = admin.name;
 		rfq.salesNote = (data.get('note')?.toString() ?? '').trim().slice(0, 300) || undefined;
 		return { message: `Marked as called: ${rfq.values.partName}.` };
+	},
+
+	// Few or no quotes: invite the next best-matched suppliers (work queue "No quotes yet").
+	inviteMore: async ({ request, locals, url }) => {
+		requireUser(locals, url, ['ADMIN']);
+		const rfqId = (await request.formData()).get('rfqId')?.toString();
+		const rfq = db.rfqs.find((r) => r.id === rfqId);
+		if (!rfq) return fail(404, { error: 'Requirement not found.' });
+		const n = await inviteMore(rfq, MORE_INVITES, 'ADMIN');
+		return n ? { message: `${n} more supplier(s) invited to ${rfq.values.partName}.` } : fail(409, { error: 'No more matching verified suppliers (or the quotation window is closed). Offer eYantrik’s help instead.' });
 	},
 
 	addSeller: async ({ request, locals, url }) => {

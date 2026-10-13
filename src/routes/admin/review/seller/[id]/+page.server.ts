@@ -4,7 +4,7 @@
 // The admin never edits the supplier's details — those are entered and updated by the supplier only.
 import { error, fail } from '@sveltejs/kit';
 import { requireUser } from '#lib/server/auth.ts';
-import { db, now, sellerRating, type VerificationEvent } from '#lib/server/db.ts';
+import { db, isInvited, now, sellerRating, type VerificationEvent } from '#lib/server/db.ts';
 import { parseStatusForm, setSellerStatus } from '#lib/server/accounts.ts';
 import { scoreMatch } from '#lib/server/matching.ts';
 import { latest } from '#lib/server/quotes.ts';
@@ -43,6 +43,7 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
 	};
 	const activity = {
 		matchedOpen: db.rfqs.filter((r) => r.status === 'OPEN' && !r.hidden && scoreMatch(s, r).score > 0).length,
+		invitedOpen: db.rfqs.filter((r) => r.status === 'OPEN' && !r.hidden && isInvited(r, s.id)).length,
 		interested: db.responses.filter((r) => r.sellerId === s.id && r.kind === 'INTERESTED').length,
 		passed: db.responses.filter((r) => r.sellerId === s.id && r.kind === 'NOT_FOR_US').length,
 		quotes: quotes.map((q) => ({ id: q.id, rfqId: q.rfqId, title: rfqTitle(q.rfqId), status: q.status, version: latest(q).v, perPiece: landed(latest(q)).perPiece, updatedAt: q.updatedAt })),

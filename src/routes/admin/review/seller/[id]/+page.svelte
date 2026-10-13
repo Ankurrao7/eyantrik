@@ -129,7 +129,8 @@
 				</div>
 				<h2 class="mt">Platform activity</h2>
 				<div class="mini-stats">
-					<div><strong>{a.matchedOpen}</strong><span>open leads matching</span></div>
+					<div><strong>{a.invitedOpen}</strong><span>open invitations</span></div>
+					<div><strong>{a.matchedOpen}</strong><span>open requirements matching</span></div>
 					<div><strong>{a.interested}</strong><span>marked interested</span></div>
 					<div><strong>{a.quotes.length}</strong><span>quotes sent</span></div>
 					<div><strong>{a.won}</strong><span>orders won</span></div>

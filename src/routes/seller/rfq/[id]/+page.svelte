@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import ContactButtons from '#lib/components/ContactButtons.svelte';
+	import MessageThread from '#lib/components/MessageThread.svelte';
 	import { PIN_ZONE_LABEL } from '#lib/geo.ts';
 	import { estimateUnitPrice, GST_RATES, INCLUSION_LABEL, inr, landed, PAYMENT_TERMS, QUOTE_INCLUSIONS, QUOTE_STATUS_CLASS, QUOTE_STATUS_LABEL } from '#lib/quote.ts';
 	import { formatRfqValue, RFQ_FIELDS } from '#lib/rfqFields.ts';
-	import { PROCESS_LABEL } from '#lib/taxonomy.ts';
+	import { INDUSTRY_LABEL, PROCESS_LABEL } from '#lib/taxonomy.ts';
 
 	let { data, form } = $props();
 	const r = $derived(data.rfq);
@@ -127,7 +128,10 @@
 					<ContactButtons size="sm" phone={data.buyer.phone} whatsapp={data.buyer.phone} buyerUserId={data.buyer.userId} rfqId={r.id} message={`Namaste ${data.buyer.name}, this is ${data.sellerName} (eYantrik). About your requirement ${r.id} — ${title}.`} />
 					<p class="tiny muted mt mb-0">Tip: send your quotation here too — buyers compare quotes side by side on eYantrik.</p>
 				{:else}
-					<div class="locked small">🔒 <span class="blur">Buyer Name · +91 98XXX XXXXX</span><br />Unlocks after document verification.</div>
+					{@const bs = data.buyerSummary}
+					<p class="small mb-0">📍 {r.values.deliveryCity}, {r.values.deliveryState}{#if r.values.industry} · {INDUSTRY_LABEL[String(r.values.industry)] ?? r.values.industry}{/if}</p>
+					<p class="small muted">{bs.requirements} requirement{bs.requirements === 1 ? '' : 's'} posted on eYantrik · {bs.awarded} awarded{#if bs.memberSince} · member since {new Date(bs.memberSince).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}{/if}</p>
+					<div class="locked small">🔒 The buyer's name & phone are shared when they <strong>shortlist</strong> your quote.{#if data.canMessage} Questions? <a href="#messages">Message the buyer</a>.{/if}</div>
 				{/if}
 			</div>
 			{#if latestV}
@@ -142,6 +146,12 @@
 			{/if}
 		</aside>
 	</div>
+
+	{#if data.verified}
+		<div class="mt">
+			<MessageThread messages={data.messages} me="SELLER" otherName="the buyer" canSend={data.canMessage} shared={data.shared} max={data.messageMax} error={form && 'messageError' in form ? form.messageError : ''} />
+		</div>
+	{/if}
 
 	{#if data.counter}
 		<section class="card counter mt">
